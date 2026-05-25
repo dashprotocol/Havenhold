@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id @default(cuid())
+  name        String
+  email       String    @unique
+  role        Role      @default(FAMILY_MEMBER)
+  avatarUrl   String?
+  createdAt   DateTime  @default(now())
+  patientId   String?
+  patient     Patient?  @relation(fields: [patientId], references: [id])
+  comments    Comment[]
+}
+
+enum Role {
+  PRIMARY_CAREGIVER
+  FAMILY_MEMBER
+}
+
+model Patient {
+  id              String                  @id @default(cuid())
+  name            String
+  dateOfBirth     DateTime?
+  analysisType    AnalysisType            @default(BALANCED)
+  createdAt       DateTime                @default(now())
+  users           User[]
+  appointments    Appointment[]
+  medications     Medication[]
+  documents       Document[]
+  interactions    MedicationInteraction[]
+}
+
+model Appointment {
+  id               String    @id @default(cuid())
+  patientId        String
+  patient          Patient   @relation(fields: [patientId], references: [id])
+  title            String
+  doctor           String?
+  specialty        String?
+  datetime         DateTime
+  location         String?
+  notes            String?
+  source           Source       @default(MANUAL)
+  reviewStatus     ReviewStatus @default(CONFIRMED)
+  sourceDocumentId String?
+  document         Document?    @relation(fields: [sourceDocumentId], references: [id])
+  createdAt        DateTime     @default(now())
+  comments         Comment[]
+}
+
+model Medication {
+  id                String                  @id @default(cuid())
+  patientId         String
+  patient           Patient                 @relation(fields: [patientId], references: [id])
+  name              String
+  dosage            String?
+  frequency         String?
+  prescribingDoctor String?
+  aiDescription     String?
+  aiSideEffects     String?
+  source            Source                  @default(MANUAL)
+  reviewStatus      ReviewStatus            @default(CONFIRMED)
+  sourceDocumentId  String?
+  document          Document?               @relation(fields: [sourceDocumentId], references: [id])
+  active            Boolean                 @default(true)
+  createdAt         DateTime                @default(now())
+  comments          Comment[]
+  interactionsA     MedicationInteraction[] @relation("MedicationA")
+  interactionsB     MedicationInteraction[] @relation("MedicationB")
+}
+
+model MedicationInteraction {
+  id            String     @id @default(cuid())
+  patientId     String
+  patient       Patient    @relation(fields: [patientId], references: [id])
+  medicationAId String
+  medicationA   Medication @relation("MedicationA", fields: [medicationAId], references: [id])
+  medicationBId String
+  medicationB   Medication @relation("MedicationB", fields: [medicationBId], references: [id])
+  severity      Severity
+  description   String
+  checkedAt     DateTime   @default(now())
+
+  @@unique([medicationAId, medicationBId])
+}
+
+enum Severity {
+  MILD
+  MODERATE
+  SEVERE
+}
+
+model Document {
+  id               String           @id @default(cuid())
+  patientId        String
+  patient          Patient          @relation(fields: [patientId], references: [id])
+  filename         String
+  fileUrl          String
+  processingStatus ProcessingStatus @default(PENDING)
+  analysisType     AnalysisType     @default(BALANCED)
+  aiSummary        String?
+  aiQuestions      Json?
+  rawText          String?
+  uploadedAt       DateTime         @default(now())
+  comments         Comment[]
+  appointments     Appointment[]
+  medications      Medication[]
+}
+
+enum ProcessingStatus {
+  PENDING
+  EXTRACTING
+  SIMPLIFYING
+  CHECKING_INTERACTIONS
+  GENERATING_QUESTIONS
+  COMPLETE
+  FAILED
+}
+
+enum Source {
+  MANUAL
+  AI_EXTRACTED
+}
+
+enum ReviewStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+enum AnalysisType {
+  BALANCED
+  SCIENTIFIC
+  HOLISTIC
+  INTEGRATIVE
+}
+
+model Comment {
+  id            String       @id @default(cuid())
+  authorId      String
+  author        User         @relation(fields: [authorId], references: [id])
+  body          String
+  createdAt     DateTime     @default(now())
+  documentId    String?
+  document      Document?    @relation(fields: [documentId], references: [id])
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  medicationId  String?
+  medication    Medication?  @relation(fields: [medicationId], references: [id])
+}

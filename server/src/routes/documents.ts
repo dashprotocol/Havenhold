@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { flags } from '../config/flags';
 import { prisma } from '../lib/prisma';
 import { runPipeline } from '../lib/pipeline';
 import { getAnalysisType } from '../lib/validation';
@@ -34,8 +35,18 @@ const upload = multer({
   },
 });
 
-// Upload a document and kick off the AI pipeline
-documentsRouter.post('/upload', upload.single('file'), async (req, res) => {
+// Upload a document and kick off the AI pipeline.
+// The pipeline gate runs BEFORE multer so no file is written when the flag is off.
+documentsRouter.post(
+  '/upload',
+  (req, res, next) => {
+    if (!flags.PIPELINE_ENABLED) {
+      return res.status(503).json({ error: 'Document pipeline is currently disabled.' });
+    }
+    next();
+  },
+  upload.single('file'),
+  async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -77,7 +88,8 @@ documentsRouter.post('/upload', upload.single('file'), async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Upload failed' });
   }
-});
+},
+);
 
 // List documents for a patient — must be before /:id to avoid route conflict
 documentsRouter.get('/list/:patientId', async (req, res) => {

@@ -128,20 +128,26 @@ Frontend runs at `http://localhost:8080`, API runs at `http://localhost:3001`.
 
 ### Frontend (`.env`)
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `VITE_DEMO_PATIENT_ID` | Yes (for demo mode) | Patient id used by frontend API calls. |
-| `VITE_DEMO_USER_ID` | Yes (for demo mode) | User id used by frontend context. |
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `VITE_DEMO_PATIENT_ID` | Yes (demo mode) | — | Patient id used by frontend API calls. |
+| `VITE_DEMO_USER_ID` | Yes (demo mode) | — | User id used by frontend context. |
+| `VITE_DEMO_MODE` | No | `true` | Enables demo auth. `false` is unsupported until JWT auth is added. |
+| `VITE_PIPELINE_ENABLED` | No | `true` | Enables AI document pipeline. `false` shows a disabled message on the upload page. |
+| `VITE_INTEGRATIONS_ENABLED` | No | `false` | Reserved for future third-party integrations. Currently a no-op. |
 
 ### Backend (`server/.env`)
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string used by Prisma. |
-| `ANTHROPIC_API_KEY` | Yes for AI pipeline | API key for document processing steps. |
-| `PORT` | Optional | API port (default `3001`). |
-| `DEMO_PATIENT_ID` | Yes (current demo auth flow) | Patient scope enforced by demo middleware. |
-| `DEMO_USER_ID` | Yes (current demo auth flow) | User context injected by demo middleware. |
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `DATABASE_URL` | Yes | — | PostgreSQL connection string used by Prisma. |
+| `ANTHROPIC_API_KEY` | Yes (AI pipeline) | — | API key for document processing steps. |
+| `PORT` | No | `3001` | API server port. |
+| `DEMO_PATIENT_ID` | Yes (demo mode) | — | Patient scope enforced by demo middleware. |
+| `DEMO_USER_ID` | Yes (demo mode) | — | User context injected by demo middleware. |
+| `DEMO_MODE` | No | `true` | Enables demo auth middleware. **Server refuses to start if `false`** — no JWT replacement exists yet. |
+| `PIPELINE_ENABLED` | No | `true` | Enables AI document pipeline. `false` returns `503` on `/documents/upload` (no file is written). |
+| `INTEGRATIONS_ENABLED` | No | `false` | Reserved for future third-party integrations. Currently a no-op. |
 
 ## Secret Handling Policy
 

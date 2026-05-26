@@ -7,6 +7,7 @@ export const commentsRouter = Router();
 commentsRouter.post('/', async (req, res) => {
   try {
     const { body, documentId, appointmentId, medicationId } = req.body;
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
     const authorId = req.user.id;
 
     const comment = await prisma.comment.create({

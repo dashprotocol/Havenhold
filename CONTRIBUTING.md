@@ -19,6 +19,13 @@ Each PR should include:
 - Notes on data model or API changes.
 - Any manual test steps performed.
 
+## Branch Protection Requirement
+
+To enforce quality gates, set branch protection on `main` and require these status checks:
+
+- `Frontend lint/test/build`
+- `Backend build`
+
 ## Local Quality Checks
 
 Run before opening a PR:

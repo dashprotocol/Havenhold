@@ -21,11 +21,9 @@ const DEMO_USER: AuthUser = {
   role: 'PRIMARY_CAREGIVER',
 };
 
-declare global {
-  namespace Express {
-    interface Request {
-      user: AuthUser;
-    }
+declare module 'express-serve-static-core' {
+  interface Request {
+    user?: AuthUser;
   }
 }
 
@@ -43,6 +41,10 @@ export function requirePatientAccess(
   res: Response,
   next: NextFunction
 ) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
   const patientId = req.params.patientId ?? req.body?.patientId;
   if (patientId && patientId !== req.user.patientId) {
     return res.status(403).json({ error: 'Access denied' });

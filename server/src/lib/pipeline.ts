@@ -1,6 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { AnalysisType, ProcessingStatus } from '@prisma/client';
 import { prisma } from './prisma';
 import { deidentify } from './deidentify';
+import {
+  sanitizeQuestions,
+  toMedicationInteractionCandidate,
+  type MedicationInteractionCandidate,
+} from './validation';
 import { broadcastFeedEvent } from '../routes/feed';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -34,17 +40,17 @@ function parseDate(value?: string): Date {
   return isNaN(d.getTime()) ? new Date() : d;
 }
 
-async function setStatus(documentId: string, status: string) {
+async function setStatus(documentId: string, status: ProcessingStatus) {
   await prisma.document.update({
     where: { id: documentId },
-    data: { processingStatus: status as any },
+    data: { processingStatus: status },
   });
 }
 
 // Prompt lens for each analysis type — same data, different perspective.
 // Intentionally separate from the extraction step so the lens only affects
 // how findings are communicated, not what is extracted.
-const ANALYSIS_LENS: Record<string, string> = {
+const ANALYSIS_LENS: Record<AnalysisType, string> = {
   BALANCED:    'Use plain, warm language a non-medical family member can easily understand. Avoid jargon — if you must use a medical term, explain it simply in parentheses.',
   SCIENTIFIC:  'Use accurate medical terminology and clinical language. Reference evidence-based guidelines where relevant. This summary is for a family member with a medical background who prefers precision over simplification.',
   HOLISTIC:    'Connect findings to the whole person — physical, emotional, and lifestyle dimensions. Explain how this affects sleep, stress, diet, daily routines, and overall wellbeing alongside the clinical details.',
@@ -55,7 +61,7 @@ export async function runPipeline(
   documentId: string,
   rawText: string,
   patientId: string,
-  analysisType: string = 'BALANCED',
+  analysisType: AnalysisType = 'BALANCED',
 ) {
   try {
     const cleanText = deidentify(rawText);
@@ -239,8 +245,12 @@ If no interactions, return an empty array [].`,
 
         try {
           const jsonMatch = interactionText.match(/\[[\s\S]*\]/);
-          const interactions: Array<{ medicationA: string; medicationB: string; severity: string; description: string }> =
-            jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+          const parsedInteractions: unknown = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+          const interactions = Array.isArray(parsedInteractions)
+            ? parsedInteractions
+                .map(toMedicationInteractionCandidate)
+                .filter((interaction): interaction is MedicationInteractionCandidate => interaction !== null)
+            : [];
 
           await Promise.all(
             interactions.map(async (interaction) => {
@@ -262,7 +272,7 @@ If no interactions, return an empty array [].`,
                     },
                   },
                   update: {
-                    severity: interaction.severity as any,
+                    severity: interaction.severity,
                     description: interaction.description,
                     checkedAt: new Date(),
                   },
@@ -270,7 +280,7 @@ If no interactions, return an empty array [].`,
                     patientId,
                     medicationAId: medA.id,
                     medicationBId: medB.id,
-                    severity: interaction.severity as any,
+                    severity: interaction.severity,
                     description: interaction.description,
                   },
                 });
@@ -341,7 +351,8 @@ Return ONLY a JSON array of strings: ["question 1", "question 2", ...]`,
     let aiQuestions: string[] = [];
     try {
       const jsonMatch = questionsText.match(/\[[\s\S]*\]/);
-      aiQuestions = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+      const parsedQuestions: unknown = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+      aiQuestions = sanitizeQuestions(parsedQuestions);
     } catch {
       aiQuestions = [];
     }
@@ -363,9 +374,16 @@ Return ONLY a JSON array of strings: ["question 1", "question 2", ...]`,
     // Broadcast new feed items to all family members
     broadcastFeedEvent(patientId, { type: 'feed_refresh', patientId });
 
-  } catch (err: any) {
-    console.error('Pipeline failed:', err?.message ?? err);
-    if (err?.status) console.error('API status:', err.status, err?.error);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const apiError = typeof err === 'object' && err !== null
+      ? (err as { status?: unknown; error?: unknown })
+      : undefined;
+
+    console.error('Pipeline failed:', message);
+    if (apiError && 'status' in apiError) {
+      console.error('API status:', apiError.status, apiError.error);
+    }
     await prisma.document.update({
       where: { id: documentId },
       data: { processingStatus: 'FAILED' },

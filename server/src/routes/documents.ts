@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { prisma } from '../lib/prisma';
 import { runPipeline } from '../lib/pipeline';
+import { getAnalysisType } from '../lib/validation';
 import { broadcastFeedEvent } from './feed';
 
 export const documentsRouter = Router();
@@ -12,7 +13,6 @@ const uploadDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const ALLOWED_MIMETYPES = new Set(['application/pdf', 'text/plain']);
-
 const storage = multer.diskStorage({
   destination: uploadDir,
   filename: (_req, file, cb) => {
@@ -39,11 +39,10 @@ documentsRouter.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    const { patientId, analysisType = 'BALANCED' } = req.body;
+    const { patientId, analysisType } = req.body;
     if (!patientId) return res.status(400).json({ error: 'patientId is required' });
 
-    const VALID_ANALYSIS_TYPES = new Set(['BALANCED', 'SCIENTIFIC', 'HOLISTIC', 'INTEGRATIVE']);
-    const safeAnalysisType = VALID_ANALYSIS_TYPES.has(analysisType) ? analysisType : 'BALANCED';
+    const safeAnalysisType = getAnalysisType(analysisType);
 
     // Extract text — use async fs.promises to avoid blocking the event loop
     let rawText = '';
@@ -63,7 +62,7 @@ documentsRouter.post('/upload', upload.single('file'), async (req, res) => {
         filename: req.file.originalname,
         fileUrl: `/uploads/${req.file.filename}`,
         processingStatus: 'PENDING',
-        analysisType: safeAnalysisType as any,
+        analysisType: safeAnalysisType,
         rawText,
       },
     });

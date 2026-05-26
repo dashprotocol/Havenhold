@@ -124,6 +124,33 @@ npm run dev
 
 Frontend runs at `http://localhost:8080`, API runs at `http://localhost:3001`.
 
+## Environment Variables
+
+### Frontend (`.env`)
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `VITE_DEMO_PATIENT_ID` | Yes (for demo mode) | Patient id used by frontend API calls. |
+| `VITE_DEMO_USER_ID` | Yes (for demo mode) | User id used by frontend context. |
+
+### Backend (`server/.env`)
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string used by Prisma. |
+| `ANTHROPIC_API_KEY` | Yes for AI pipeline | API key for document processing steps. |
+| `PORT` | Optional | API port (default `3001`). |
+| `DEMO_PATIENT_ID` | Yes (current demo auth flow) | Patient scope enforced by demo middleware. |
+| `DEMO_USER_ID` | Yes (current demo auth flow) | User context injected by demo middleware. |
+
+## Secret Handling Policy
+
+- Never commit `.env` or `server/.env`.
+- Use `.env.example` and `server/.env.example` as templates only.
+- Rotate keys immediately if a secret is exposed.
+- Do not place PHI in logs, screenshots, or issue comments.
+- Keep production credentials separate from local/demo credentials.
+
 ## Scripts
 
 ### Frontend (root)

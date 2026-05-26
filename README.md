@@ -62,6 +62,9 @@ Havenhold/
 - npm 10+
 - Docker Desktop
 
+Optional for infrastructure provisioning (`feat/H-005` script path):
+- AWS CLI v2 (`aws`)
+
 ### 1. Install dependencies
 
 ```bash
@@ -173,6 +176,20 @@ Frontend runs at `http://localhost:8080`, API runs at `http://localhost:3001`.
 - `npm run db:migrate` - apply Prisma migrations
 - `npm run db:seed` - seed demo data
 - `npm run db:studio` - open Prisma Studio
+
+## Infrastructure Provisioning (Optional)
+
+For Lightsail host setup in `feat/H-005`, you can use either:
+- AWS Dashboard UI flow (no local AWS CLI dependency)
+- CLI helper scripts in `infra/` (requires configured AWS CLI)
+
+CLI helper example:
+
+```bash
+KEY_PAIR_NAME=<lightsail-key-name> ./infra/create-instance.sh
+```
+
+See `docs/runbook/H-005-lightsail-provision.md` for the full runbook and safety checks.
 
 ## Security and Privacy Notes
 

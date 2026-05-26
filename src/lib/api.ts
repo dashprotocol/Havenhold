@@ -1,8 +1,8 @@
 const BASE_URL = 'http://localhost:3001/api';
 
 // Demo only — in production this comes from auth session
-export const PATIENT_ID = import.meta.env.VITE_PATIENT_ID as string;
-export const USER_ID = import.meta.env.VITE_USER_ID as string;
+export const PATIENT_ID = import.meta.env.VITE_DEMO_PATIENT_ID as string;
+export const USER_ID = import.meta.env.VITE_DEMO_USER_ID as string;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {

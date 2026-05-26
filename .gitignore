@@ -1,7 +1,15 @@
-# Environment variables
+# Environment variables and secret files
 .env
-.env.local
-.env.production
+.env.*
+server/.env
+server/.env.*
+!.env.example
+!server/.env.example
+.envrc
+*.pem
+*.key
+*.p12
+*.crt
 
 # Uploaded files (doctor's notes contain PHI)
 server/uploads/
@@ -18,6 +26,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+server/dist
 *.local
 
 # Editor directories and files

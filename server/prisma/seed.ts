@@ -34,6 +34,10 @@ async function main() {
     ],
   });
 
+  const primaryCaregiver = await prisma.user.findUnique({
+    where: { email: 'david@example.com' },
+  });
+
   // Existing medications
   const lisinopril = await prisma.medication.create({
     data: {
@@ -99,6 +103,7 @@ async function main() {
   console.log('✓ 2 medications with interaction');
   console.log('✓ 2 upcoming appointments');
   console.log('\nPatient ID for API calls:', margaret.id);
+  console.log('Demo user ID for API calls:', primaryCaregiver?.id ?? 'not found');
 }
 
 main()

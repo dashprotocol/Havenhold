@@ -5,6 +5,7 @@ import {
   HelpCircle, CheckCircle2, CalendarPlus, Pill, Loader2,
 } from "lucide-react";
 import { uploadDocument, subscribeToFeed, type ProcessingStatus } from "@/lib/api";
+import { flags } from "@/lib/flags";
 
 const STEPS: { status: ProcessingStatus; icon: typeof Search; title: string; description: string }[] = [
   { status: "EXTRACTING", icon: Search, title: "Extracting Data", description: "Scanning for appointments, medications, and instructions…" },
@@ -107,6 +108,22 @@ export default function DocumentUploadPage() {
       setError("Upload failed. Please try again.");
     }
   };
+
+  // Pipeline disabled — show a clear message instead of a broken upload form
+  if (!flags.PIPELINE_ENABLED) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl">Upload Document</h1>
+          <p className="text-muted-foreground mt-1">Upload a doctor's note and AI will extract the important details.</p>
+        </div>
+        <div className="havenhold-card text-center py-10 space-y-2">
+          <p className="font-semibold text-muted-foreground">Document processing is currently unavailable.</p>
+          <p className="text-sm text-muted-foreground">The AI pipeline has been temporarily disabled. Please check back later.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

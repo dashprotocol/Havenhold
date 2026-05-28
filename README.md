@@ -189,7 +189,7 @@ CLI helper example:
 KEY_PAIR_NAME=<lightsail-key-name> ./infra/create-instance.sh
 ```
 
-See `docs/runbook/H-005-lightsail-provision.md` for the full runbook and safety checks.
+See `docs/runbook/lightsail-provision-host-hardening.md` for the full runbook and safety checks.
 
 ## Security and Privacy Notes
 

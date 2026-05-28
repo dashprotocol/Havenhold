@@ -1,0 +1,24 @@
+# /etc/nginx/sites-available/havenhold
+# Certbot will modify this file: adding ssl_certificate lines and a redirect block.
+# Do not manually add ssl_ directives before running certbot.
+
+server {
+    listen 80;
+    server_name <HOSTNAME>;
+
+    server_tokens off;
+
+    location / {
+        proxy_pass         http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+    }
+}
+
+# HSTS — uncomment only after HTTPS is confirmed stable end-to-end:
+# add_header Strict-Transport-Security "max-age=31536000" always;

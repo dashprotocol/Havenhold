@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# H-005 one-time host baseline hardening script for Ubuntu Lightsail.
+# One-time host baseline hardening script for Ubuntu Lightsail.
 # Run as: bash /tmp/provision.sh (as ubuntu user with sudo access)
 
-DEPLOY_USER="${DEPLOY_USER:-havenadmin}"
+DEPLOY_USER="${DEPLOY_USER:-adminuser}"
 SSH_PORT="${SSH_PORT:-22}"
 ALLOW_UBUNTU_USER="${ALLOW_UBUNTU_USER:-true}"
 

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import { requirePatientAccess } from '../middleware/demoAuth';
+import { requirePatientAccess } from '../middleware/sessionAuth';
 
 export const medicationsRouter = Router();
 
@@ -23,7 +23,7 @@ medicationsRouter.get('/:patientId', requirePatientAccess, async (req, res) => {
 });
 
 // Create medication manually
-medicationsRouter.post('/', async (req, res) => {
+medicationsRouter.post('/', requirePatientAccess, async (req, res) => {
   try {
     const { patientId, name, dosage, frequency, prescribingDoctor } = req.body;
     const medication = await prisma.medication.create({
@@ -38,6 +38,13 @@ medicationsRouter.post('/', async (req, res) => {
 // Review AI-extracted medication — confirm or reject
 medicationsRouter.patch('/:id/review', async (req, res) => {
   try {
+    const med = await prisma.medication.findUnique({
+      where: { id: req.params.id },
+      select: { patientId: true },
+    });
+    if (!med) return res.status(404).json({ error: 'Not found' });
+    if (med.patientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+
     const { action } = req.body as { action: 'confirm' | 'reject' };
     if (!['confirm', 'reject'].includes(action)) {
       return res.status(400).json({ error: 'action must be confirm or reject' });
@@ -55,6 +62,13 @@ medicationsRouter.patch('/:id/review', async (req, res) => {
 // Update medication — only allow mutable user-facing fields
 medicationsRouter.patch('/:id', async (req, res) => {
   try {
+    const med = await prisma.medication.findUnique({
+      where: { id: req.params.id },
+      select: { patientId: true },
+    });
+    if (!med) return res.status(404).json({ error: 'Not found' });
+    if (med.patientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+
     const { name, dosage, frequency, prescribingDoctor, active } = req.body;
     const medication = await prisma.medication.update({
       where: { id: req.params.id },

@@ -12,9 +12,14 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
+    "@better-auth/prisma-adapter": "^1.6.11",
     "@prisma/client": "^5.22.0",
+    "better-auth": "^1.6.11",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",

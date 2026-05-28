@@ -3,15 +3,49 @@ import { prisma } from '../lib/prisma';
 
 export const commentsRouter = Router();
 
+async function resolveEntityPatientId(
+  entityType: string,
+  entityId: string
+): Promise<string | null> {
+  if (entityType === 'document') {
+    const doc = await prisma.document.findUnique({ where: { id: entityId }, select: { patientId: true } });
+    return doc?.patientId ?? null;
+  }
+  if (entityType === 'appointment') {
+    const appt = await prisma.appointment.findUnique({ where: { id: entityId }, select: { patientId: true } });
+    return appt?.patientId ?? null;
+  }
+  if (entityType === 'medication') {
+    const med = await prisma.medication.findUnique({ where: { id: entityId }, select: { patientId: true } });
+    return med?.patientId ?? null;
+  }
+  return null;
+}
+
 // Add a comment — authorId comes from the session, not the request body
 commentsRouter.post('/', async (req, res) => {
   try {
     const { body, documentId, appointmentId, medicationId } = req.body;
-    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
-    const authorId = req.user.id;
+
+    const provided: { type: 'document' | 'appointment' | 'medication'; id: string }[] = [
+      ...(documentId   ? [{ type: 'document'    as const, id: documentId }]   : []),
+      ...(appointmentId ? [{ type: 'appointment' as const, id: appointmentId }] : []),
+      ...(medicationId  ? [{ type: 'medication'  as const, id: medicationId }]  : []),
+    ];
+
+    if (provided.length === 0) {
+      return res.status(400).json({ error: 'A documentId, appointmentId, or medicationId is required' });
+    }
+
+    // Verify ownership for every provided entity — prevents cross-tenant writes
+    for (const { type, id } of provided) {
+      const ownerPatientId = await resolveEntityPatientId(type, id);
+      if (!ownerPatientId) return res.status(404).json({ error: `${type} not found` });
+      if (ownerPatientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+    }
 
     const comment = await prisma.comment.create({
-      data: { authorId, body, documentId, appointmentId, medicationId },
+      data: { authorId: req.user!.id, body, documentId, appointmentId, medicationId },
       include: { author: true },
     });
     res.status(201).json(comment);
@@ -24,12 +58,19 @@ commentsRouter.post('/', async (req, res) => {
 commentsRouter.get('/:entityType/:entityId', async (req, res) => {
   try {
     const { entityType, entityId } = req.params;
-    const where: Record<string, string> = {};
 
+    if (!['document', 'appointment', 'medication'].includes(entityType)) {
+      return res.status(400).json({ error: 'Invalid entity type' });
+    }
+
+    const ownerPatientId = await resolveEntityPatientId(entityType, entityId);
+    if (!ownerPatientId) return res.status(404).json({ error: 'Entity not found' });
+    if (ownerPatientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+
+    const where: Record<string, string> = {};
     if (entityType === 'document') where.documentId = entityId;
     else if (entityType === 'appointment') where.appointmentId = entityId;
-    else if (entityType === 'medication') where.medicationId = entityId;
-    else return res.status(400).json({ error: 'Invalid entity type' });
+    else where.medicationId = entityId;
 
     const comments = await prisma.comment.findMany({
       where,

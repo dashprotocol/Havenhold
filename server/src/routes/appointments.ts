@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import { requirePatientAccess } from '../middleware/demoAuth';
+import { requirePatientAccess } from '../middleware/sessionAuth';
 
 export const appointmentsRouter = Router();
 
@@ -24,7 +24,7 @@ appointmentsRouter.get('/:patientId', requirePatientAccess, async (req, res) => 
 });
 
 // Create appointment manually
-appointmentsRouter.post('/', async (req, res) => {
+appointmentsRouter.post('/', requirePatientAccess, async (req, res) => {
   try {
     const { patientId, title, doctor, specialty, datetime, location, notes } = req.body;
     const appointment = await prisma.appointment.create({
@@ -39,6 +39,13 @@ appointmentsRouter.post('/', async (req, res) => {
 // Update appointment — only allow mutable user-facing fields
 appointmentsRouter.patch('/:id', async (req, res) => {
   try {
+    const appt = await prisma.appointment.findUnique({
+      where: { id: req.params.id },
+      select: { patientId: true },
+    });
+    if (!appt) return res.status(404).json({ error: 'Not found' });
+    if (appt.patientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+
     const { title, doctor, specialty, datetime, location, notes } = req.body;
     const appointment = await prisma.appointment.update({
       where: { id: req.params.id },
@@ -60,6 +67,13 @@ appointmentsRouter.patch('/:id', async (req, res) => {
 // Review AI-extracted appointment — confirm or reject
 appointmentsRouter.patch('/:id/review', async (req, res) => {
   try {
+    const appt = await prisma.appointment.findUnique({
+      where: { id: req.params.id },
+      select: { patientId: true },
+    });
+    if (!appt) return res.status(404).json({ error: 'Not found' });
+    if (appt.patientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+
     const { action } = req.body as { action: 'confirm' | 'reject' };
     if (!['confirm', 'reject'].includes(action)) {
       return res.status(400).json({ error: 'action must be confirm or reject' });
@@ -77,9 +91,11 @@ appointmentsRouter.patch('/:id/review', async (req, res) => {
 // Export single appointment as iCal
 appointmentsRouter.get('/:id/ical', async (req, res) => {
   try {
-    const appt = await prisma.appointment.findUniqueOrThrow({
+    const appt = await prisma.appointment.findUnique({
       where: { id: req.params.id },
     });
+    if (!appt) return res.status(404).json({ error: 'Not found' });
+    if (appt.patientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
 
     const start = new Date(appt.datetime);
     const end = new Date(start.getTime() + 60 * 60 * 1000); // 1hr default

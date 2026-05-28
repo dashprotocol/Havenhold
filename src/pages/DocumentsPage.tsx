@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FileText, Upload, Clock, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { fetchDocuments } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
 
 const statusIcon = {
   COMPLETE: <CheckCircle2 className="w-4 h-4 text-primary" />,
@@ -25,9 +26,11 @@ const statusLabel = {
 };
 
 export default function DocumentsPage() {
+  const { user } = useAuth();
   const { data: documents = [], isLoading } = useQuery({
-    queryKey: ["documents"],
-    queryFn: fetchDocuments,
+    queryKey: ["documents", user?.patientId],
+    queryFn: () => fetchDocuments(user!.patientId),
+    enabled: !!user?.patientId,
   });
 
   return (

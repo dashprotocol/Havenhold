@@ -2,17 +2,19 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2 } from "lucide-react";
-import { createAppointment, PATIENT_ID } from "@/lib/api";
+import { createAppointment } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function AddAppointmentPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [form, setForm] = useState({
     title: "", doctor: "", specialty: "", datetime: "", location: "", notes: "",
   });
 
   const mutation = useMutation({
-    mutationFn: () => createAppointment({ ...form, patientId: PATIENT_ID }),
+    mutationFn: () => createAppointment({ ...form, patientId: user!.patientId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       queryClient.invalidateQueries({ queryKey: ["feed"] });

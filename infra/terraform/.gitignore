@@ -1,0 +1,12 @@
+# State files — may contain resource IDs and sensitive values; never commit
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfstate.*.backup
+
+# Terraform working directory (downloaded providers)
+.terraform/
+
+# Variable override files — local dev only, never commit
+*.tfvars
+*.tfvars.json
+!*.tfvars.example

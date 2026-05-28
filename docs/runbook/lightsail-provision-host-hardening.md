@@ -1,4 +1,4 @@
-# H-005 Runbook: Lightsail Provision + Host Hardening
+# Runbook: Lightsail Provision + Host Hardening
 
 ## Purpose
 Provision a single Havenhold MVP Lightsail host and apply baseline hardening to satisfy deploy gate `D0`.
@@ -17,9 +17,9 @@ Provision a single Havenhold MVP Lightsail host and apply baseline hardening to 
 ## Resource Naming
 - Instance: `havenhold-app-01`
 - Static IP: `havenhold-app-ip`
-- Admin user: `havenadmin`
+- Admin user: `adminuser` (example; choose your own)
 
-## Provision Path A (Recommended for this ticket): AWS Dashboard UI
+## Provision Path A: AWS Dashboard UI
 1. In Lightsail (`us-east-1`), create instance:
 - Platform: Linux/Unix
 - Blueprint: Ubuntu `24.04 LTS`
@@ -53,20 +53,22 @@ KEY_PAIR_NAME=<lightsail-key-name> SSH_PORT=2222 ./infra/create-instance.sh
 Copy and execute once on the VM:
 
 ```bash
-scp -i <key.pem> ./infra/provision.sh ubuntu@<STATIC_IP>:/tmp/provision.sh
-ssh -i <key.pem> ubuntu@<STATIC_IP> 'bash /tmp/provision.sh'
+KEY_PATH=/path/to/key.pem
+STATIC_IP=203.0.113.10
+scp -i "$KEY_PATH" ./infra/provision.sh ubuntu@"$STATIC_IP":/tmp/provision.sh
+ssh -i "$KEY_PATH" ubuntu@"$STATIC_IP" 'DEPLOY_USER=adminuser bash /tmp/provision.sh'
 ```
 
 After script completion, set a local sudo password for the hardened admin user:
 
 ```bash
-ssh -t -i <key.pem> ubuntu@<STATIC_IP> 'sudo passwd havenadmin'
+ssh -t -i "$KEY_PATH" ubuntu@"$STATIC_IP" 'sudo passwd adminuser'
 ```
 
 Optional custom SSH port on host:
 
 ```bash
-ssh -i <key.pem> ubuntu@<STATIC_IP> 'SSH_PORT=2222 bash /tmp/provision.sh'
+ssh -i "$KEY_PATH" ubuntu@"$STATIC_IP" 'DEPLOY_USER=adminuser SSH_PORT=2222 bash /tmp/provision.sh'
 ```
 
 ## Critical Safety Sequence (Avoid Lockout)
@@ -75,7 +77,8 @@ ssh -i <key.pem> ubuntu@<STATIC_IP> 'SSH_PORT=2222 bash /tmp/provision.sh'
 3. From local machine, open a second SSH session with hardened user:
 
 ```bash
-ssh -i <key.pem> -p <SSH_PORT> havenadmin@<STATIC_IP>
+SSH_PORT=22
+ssh -i "$KEY_PATH" -p "$SSH_PORT" adminuser@"$STATIC_IP"
 ```
 
 4. Only close original session after second session succeeds.
@@ -83,7 +86,7 @@ ssh -i <key.pem> -p <SSH_PORT> havenadmin@<STATIC_IP>
 ## D0 Verification Checklist
 - [ ] Lightsail instance exists in `us-east-1` with static IP attached.
 - [ ] Lightsail inbound rules expose only required ports (`22/80/443` or `2222/80/443`).
-- [ ] `ssh -p <SSH_PORT> havenadmin@<STATIC_IP>` works with key auth.
+- [ ] `ssh -p "$SSH_PORT" adminuser@"$STATIC_IP"` works with key auth.
 - [ ] Root SSH login is rejected.
 - [ ] Password SSH auth is rejected.
 - [ ] UFW enabled with default deny inbound and only required ports allowed.
@@ -113,7 +116,7 @@ sudo fail2ban-client status sshd
 Optional from local machine:
 
 ```bash
-nmap -p <SSH_PORT>,80,443 <STATIC_IP>
+nmap -p "$SSH_PORT",80,443 "$STATIC_IP"
 ```
 
 ## Rollback / Recovery

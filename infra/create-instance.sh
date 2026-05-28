@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Optional helper for H-005.
+# Optional provisioning helper.
 # This script uses AWS CLI to provision a Lightsail instance with a static IP and minimal public ports.
-# Keep docs/runbook/H-005-lightsail-provision.md as source of truth.
+# Keep the provisioning runbook as the operational source of truth.
 
 INSTANCE_NAME="${INSTANCE_NAME:-havenhold-app-01}"
 STATIC_IP_NAME="${STATIC_IP_NAME:-havenhold-app-ip}"

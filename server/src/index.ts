@@ -30,7 +30,14 @@ if (!flags.DEMO_MODE) {
 const app = express();
 const PORT = process.env.PORT ?? 3001;
 
-app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:8080', 'http://localhost:3000'] }));
+const devOrigins = ['http://localhost:5173', 'http://localhost:8080', 'http://localhost:3000'];
+const prodOrigins =
+  process.env.NODE_ENV !== 'development' && process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim()).filter(Boolean)
+    : [];
+// devOrigins are always included while DEMO_MODE is the only auth layer.
+// When real auth lands, restrict to prodOrigins-only in production (remove devOrigins spread).
+app.use(cors({ origin: [...devOrigins, ...prodOrigins] }));
 app.use(express.json());
 
 // Demo auth: sets req.user on every request.

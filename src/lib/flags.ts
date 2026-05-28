@@ -5,7 +5,6 @@
  * Safe defaults match the backend so the app works out of the box
  * without any extra env configuration.
  *
- * VITE_DEMO_MODE            default: true
  * VITE_PIPELINE_ENABLED     default: true
  * VITE_INTEGRATIONS_ENABLED default: false
  */
@@ -19,7 +18,6 @@ function parseBool(value: string | undefined, defaultValue: boolean): boolean {
 }
 
 export const flags = {
-  DEMO_MODE:            parseBool(import.meta.env.VITE_DEMO_MODE,            true),
   PIPELINE_ENABLED:     parseBool(import.meta.env.VITE_PIPELINE_ENABLED,     true),
   INTEGRATIONS_ENABLED: parseBool(import.meta.env.VITE_INTEGRATIONS_ENABLED, false),
 } as const;

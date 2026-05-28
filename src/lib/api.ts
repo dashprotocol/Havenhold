@@ -1,24 +1,26 @@
-const BASE_URL = 'http://localhost:3001/api';
-
-// Demo only — in production this comes from auth session
-export const PATIENT_ID = import.meta.env.VITE_DEMO_PATIENT_ID as string;
-export const USER_ID = import.meta.env.VITE_DEMO_USER_ID as string;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     ...options,
   });
+  if (res.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Unauthenticated');
+  }
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }
 
 // Feed
-export const fetchFeed = () => request<FeedItem[]>(`/feed/${PATIENT_ID}`);
+export const fetchFeed = (patientId: string) =>
+  request<FeedItem[]>(`/feed/${patientId}`);
 
 // Appointments
-export const fetchAppointments = () =>
-  request<Appointment[]>(`/appointments/${PATIENT_ID}`);
+export const fetchAppointments = (patientId: string) =>
+  request<Appointment[]>(`/appointments/${patientId}`);
 
 export const createAppointment = (data: CreateAppointmentInput) =>
   request<Appointment>('/appointments', { method: 'POST', body: JSON.stringify(data) });
@@ -27,24 +29,36 @@ export const exportIcal = (id: string) =>
   window.open(`${BASE_URL}/appointments/${id}/ical`, '_blank');
 
 // Medications
-export const fetchMedications = () =>
-  request<Medication[]>(`/medications/${PATIENT_ID}`);
+export const fetchMedications = (patientId: string) =>
+  request<Medication[]>(`/medications/${patientId}`);
 
 // Documents
-export const fetchDocuments = () =>
+export const fetchDocuments = (patientId: string) =>
   request<Pick<Document, 'id' | 'filename' | 'processingStatus' | 'uploadedAt'>[]>(
-    `/documents/list/${PATIENT_ID}`
+    `/documents/list/${patientId}`
   );
 
 export const fetchDocument = (id: string) =>
   request<Document>(`/documents/${id}`);
 
-export const uploadDocument = async (file: File, analysisType = 'BALANCED'): Promise<{ documentId: string }> => {
+export const uploadDocument = async (
+  patientId: string,
+  file: File,
+  analysisType = 'BALANCED'
+): Promise<{ documentId: string }> => {
   const form = new FormData();
   form.append('file', file);
-  form.append('patientId', PATIENT_ID);
+  form.append('patientId', patientId);
   form.append('analysisType', analysisType);
-  const res = await fetch(`${BASE_URL}/documents/upload`, { method: 'POST', body: form });
+  const res = await fetch(`${BASE_URL}/documents/upload`, {
+    method: 'POST',
+    body: form,
+    credentials: 'include',
+  });
+  if (res.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Unauthenticated');
+  }
   if (!res.ok) throw new Error(`Upload failed ${res.status}`);
   return res.json();
 };
@@ -64,11 +78,17 @@ export const fetchComments = (entityType: string, entityId: string) =>
   request<Comment[]>(`/comments/${entityType}/${entityId}`);
 
 // Family
-export const fetchFamily = () => request<User[]>(`/family/${PATIENT_ID}`);
+export const fetchFamily = (patientId: string) =>
+  request<User[]>(`/family/${patientId}`);
 
 // SSE helper — returns a cleanup function
-export function subscribeToFeed(onEvent: (event: SSEEvent) => void): () => void {
-  const es = new EventSource(`${BASE_URL}/feed/events/${PATIENT_ID}`);
+export function subscribeToFeed(
+  patientId: string,
+  onEvent: (event: SSEEvent) => void
+): () => void {
+  const es = new EventSource(`${BASE_URL}/feed/events/${patientId}`, {
+    withCredentials: true,
+  });
   es.onmessage = (e) => {
     try {
       onEvent(JSON.parse(e.data));

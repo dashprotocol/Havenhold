@@ -4,12 +4,15 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, MapPin, ChevronDown, ChevronUp, Download, Plus, StickyNote, Clock } from "lucide-react";
 import { fetchAppointments, exportIcal, type Appointment } from "@/lib/api";
 import { format } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function AppointmentsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const { user } = useAuth();
   const { data: appointments = [], isLoading } = useQuery({
-    queryKey: ["appointments"],
-    queryFn: fetchAppointments,
+    queryKey: ["appointments", user?.patientId],
+    queryFn: () => fetchAppointments(user!.patientId),
+    enabled: !!user?.patientId,
   });
 
   const grouped = appointments.reduce<Record<string, Appointment[]>>((acc, apt) => {

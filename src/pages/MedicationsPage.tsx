@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import { Pill, ChevronDown, ChevronUp, AlertTriangle, User, Clock, Info } from "lucide-react";
 import { fetchMedications, type Medication } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 const severityColor = {
   MILD: "text-yellow-600 bg-yellow-50 border-yellow-200",
@@ -18,9 +19,11 @@ function getAllInteractions(med: Medication) {
 
 export default function MedicationsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const { user } = useAuth();
   const { data: medications = [], isLoading } = useQuery({
-    queryKey: ["medications"],
-    queryFn: fetchMedications,
+    queryKey: ["medications", user?.patientId],
+    queryFn: () => fetchMedications(user!.patientId),
+    enabled: !!user?.patientId,
   });
 
   return (

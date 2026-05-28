@@ -102,11 +102,12 @@ ssh -i "$KEY_PATH" "$ADMIN_USER"@"$STATIC_IP" \
 
 The script auto-selects the most recent backup, prompts for confirmation, drops and recreates the database, restores, and prints row counts. Fill in the [Restore Tested Once](#restore-tested-once-h-010-pre-launch-confirmation) table below.
 
-After the restore test passes, the app can be started for the first time:
+After the restore test passes, fill in the [Restore Tested Once](#restore-tested-once-h-010-pre-launch-confirmation) table, commit the change, then copy and run the deploy script (single entry point — handles build, migrate, seed, and systemd start):
 
 ```bash
+scp -i "$KEY_PATH" infra/deploy.sh "$ADMIN_USER"@"$STATIC_IP":/tmp/deploy.sh
 ssh -i "$KEY_PATH" "$ADMIN_USER"@"$STATIC_IP" \
-  "sudo systemctl start havenhold-app"
+  "sudo bash /tmp/deploy.sh"
 ```
 
 ## D0 Verification Checklist (H-007 — infra only)
@@ -128,7 +129,7 @@ Complete these during the H-010 initial deploy, after app code is on the server 
 - [ ] `npx prisma db seed` completed — demo patient/user rows exist.
 - [ ] First manual backup written to `/var/backups/havenhold/` with non-zero size.
 - [ ] `postgres-restore.sh` run against the most recent backup; row-count validation passed.
-- [ ] [Restore Tested Once](#restore-tested-once-h-010-pre-launch-confirmation) table filled in and committed.
+- [ ] [Restore Tested Once](#restore-tested-once-h-010-pre-launch-confirmation) table filled in and committed **before** running `infra/deploy.sh` for the first time.
 
 ## Evidence Commands
 
@@ -149,7 +150,7 @@ sudo ss -tulpen | grep 5432
 sudo ufw status verbose | grep 5432 || echo "No 5432 rule — correct"
 
 # Lightsail firewall (run locally, not on host)
-aws lightsail get-instance-port-states --instance-name havenhold-app-01 \
+aws lightsail get-instance-port-states --instance-name havenhold-api-01 \
   | grep -i fromport | grep 5432 || echo "No 5432 Lightsail rule — correct"
 
 # Backup directory and files
@@ -228,7 +229,7 @@ BACKUP_FILE=/var/backups/havenhold/havenhold_20260528T023001Z.sql \
 
 - **`postgres-setup.sh` failed mid-way:** Re-run — the script is idempotent.
 - **pg_dump fails in cron:** Check `/var/log/havenhold-backup.log`. Common causes: disk full (`df -h`), PostgreSQL service stopped (`systemctl status postgresql`). Resolve and run manually to verify.
-- **`postgres-restore.sh` fails at DROP — active connections persist:** Stop the application first (`sudo systemctl stop havenhold-app`), then retry.
+- **`postgres-restore.sh` fails at DROP — active connections persist:** Stop the application first (`sudo systemctl stop havenhold-api`), then retry.
 - **Restore SQL errors (`ON_ERROR_STOP` exits):** The backup may be corrupt or from an incompatible schema version. Try the previous day's backup from `/var/backups/havenhold/`.
 - **`pg_hba.conf` conflict on a partially provisioned host:** The validation step at the end of `postgres-setup.sh` catches this. Inspect the file manually (`sudo cat /etc/postgresql/16/main/pg_hba.conf`) and remove duplicate or conflicting entries before re-running.
 - **All local backups lost (disk failure):** No S3 offload exists at D0. Restore the Lightsail instance snapshot from the AWS console, then re-run `postgres-setup.sh` with the original `DB_PASSWORD`. Pending migrations can be replayed with `npx prisma migrate deploy`.

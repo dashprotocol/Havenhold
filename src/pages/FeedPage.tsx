@@ -7,6 +7,7 @@ import {
   fetchFeed, subscribeToFeed,
   type FeedItem, type Appointment, type Medication, type Document,
 } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 const iconMap = { document: FileText, appointment: CalendarPlus, medication: Pill };
 const colorMap = {
@@ -39,15 +40,21 @@ function feedDescription(item: FeedItem): string {
 
 export default function FeedPage() {
   const queryClient = useQueryClient();
-  const { data: feed = [], isLoading } = useQuery({ queryKey: ["feed"], queryFn: fetchFeed });
+  const { user } = useAuth();
+  const { data: feed = [], isLoading } = useQuery({
+    queryKey: ["feed", user?.patientId],
+    queryFn: () => fetchFeed(user!.patientId),
+    enabled: !!user?.patientId,
+  });
 
   useEffect(() => {
-    return subscribeToFeed((event) => {
+    if (!user?.patientId) return;
+    return subscribeToFeed(user.patientId, (event) => {
       if (event.type === "feed_refresh") {
         queryClient.invalidateQueries({ queryKey: ["feed"] });
       }
     });
-  }, [queryClient]);
+  }, [user?.patientId, queryClient]);
 
   return (
     <div className="space-y-5">

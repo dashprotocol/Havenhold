@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import { requirePatientAccess } from '../middleware/demoAuth';
+import { requirePatientAccess } from '../middleware/sessionAuth';
 
 export const feedRouter = Router();
 
@@ -86,4 +86,3 @@ feedRouter.get('/:patientId', requirePatientAccess, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch feed' });
   }
 });
-

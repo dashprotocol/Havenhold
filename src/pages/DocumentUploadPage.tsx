@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { uploadDocument, subscribeToFeed, type ProcessingStatus } from "@/lib/api";
 import { flags } from "@/lib/flags";
+import { useAuth } from "@/contexts/AuthContext";
 
 const STEPS: { status: ProcessingStatus; icon: typeof Search; title: string; description: string }[] = [
   { status: "EXTRACTING", icon: Search, title: "Extracting Data", description: "Scanning for appointments, medications, and instructions…" },
@@ -68,6 +69,7 @@ const ANALYSIS_OPTIONS: { value: AnalysisType; label: string; description: strin
 
 export default function DocumentUploadPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [analysisType, setAnalysisType] = useState<AnalysisType>("BALANCED");
   const [documentId, setDocumentId] = useState<string | null>(null);
@@ -82,15 +84,15 @@ export default function DocumentUploadPage() {
 
   // Subscribe to SSE once we have a documentId
   useEffect(() => {
-    if (!documentId) return;
-    return subscribeToFeed((event) => {
+    if (!documentId || !user?.patientId) return;
+    return subscribeToFeed(user.patientId, (event) => {
       if (event.type === "pipeline" && event.documentId === documentId) {
         if (event.step) setCurrentStatus(event.step);
         if (event.appointmentsAdded) setAppointmentsAdded(event.appointmentsAdded);
         if (event.medicationsAdded) setMedicationsAdded(event.medicationsAdded);
       }
     });
-  }, [documentId]);
+  }, [documentId, user?.patientId]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -98,10 +100,10 @@ export default function DocumentUploadPage() {
   };
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (!file || !user?.patientId) return;
     setError(null);
     try {
-      const { documentId: id } = await uploadDocument(file, analysisType);
+      const { documentId: id } = await uploadDocument(user.patientId, file, analysisType);
       setDocumentId(id);
       setCurrentStatus("PENDING");
     } catch {

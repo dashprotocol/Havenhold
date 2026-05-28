@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Shield, User, Clock } from "lucide-react";
 import { fetchFamily, type User as FamilyMember } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 const roleLabel: Record<FamilyMember["role"], string> = {
   PRIMARY_CAREGIVER: "Primary Caregiver",
@@ -8,9 +9,11 @@ const roleLabel: Record<FamilyMember["role"], string> = {
 };
 
 export default function FamilyPage() {
+  const { user } = useAuth();
   const { data: members = [], isLoading } = useQuery({
-    queryKey: ["family"],
-    queryFn: fetchFamily,
+    queryKey: ["family", user?.patientId],
+    queryFn: () => fetchFamily(user!.patientId),
+    enabled: !!user?.patientId,
   });
 
   return (

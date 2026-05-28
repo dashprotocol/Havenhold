@@ -5,8 +5,6 @@
  * Safe defaults are chosen so the server runs correctly out of the box
  * with a minimal .env (i.e. for local dev and demo deployments).
  *
- * DEMO_MODE            default: true   — enables demo auth middleware.
- *                                        Must remain true until JWT auth is implemented.
  * PIPELINE_ENABLED     default: true   — enables the AI document processing pipeline.
  *                                        false blocks /documents/upload entirely (503).
  * INTEGRATIONS_ENABLED default: false  — reserved for future third-party integrations
@@ -29,7 +27,6 @@ export function parseBool(value: string | undefined, defaultValue: boolean): boo
 }
 
 export const flags = {
-  DEMO_MODE:            parseBool(process.env.DEMO_MODE,            true),
   PIPELINE_ENABLED:     parseBool(process.env.PIPELINE_ENABLED,     true),
   INTEGRATIONS_ENABLED: parseBool(process.env.INTEGRATIONS_ENABLED, false),
 } as const;

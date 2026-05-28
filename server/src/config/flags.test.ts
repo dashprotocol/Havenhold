@@ -38,13 +38,8 @@ test('parseBool falls back to default for unrecognised values', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Safe-default contract tests (verify flags module defaults without side-effects)
+// Safe-default contract tests
 // ---------------------------------------------------------------------------
-
-test('DEMO_MODE defaults to true when env var is unset', () => {
-  // parseBool is the single source of truth for defaults; this test pins the contract.
-  assert.equal(parseBool(undefined, true), true, 'DEMO_MODE safe default must be true');
-});
 
 test('PIPELINE_ENABLED defaults to true when env var is unset', () => {
   assert.equal(parseBool(undefined, true), true, 'PIPELINE_ENABLED safe default must be true');

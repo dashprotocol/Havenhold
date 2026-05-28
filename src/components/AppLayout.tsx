@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Newspaper, CalendarDays, Pill, FolderOpen, Heart } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Newspaper, CalendarDays, Pill, FolderOpen, Heart, LogOut } from "lucide-react";
+import { signOut } from "@/lib/auth-client";
 
 const tabs = [
   { path: "/", label: "Feed", icon: Newspaper },
@@ -11,6 +12,12 @@ const tabs = [
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/login", { replace: true });
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -23,9 +30,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               Tend<span className="text-primary">Well</span>
             </span>
           </div>
-          <p className="text-xs font-semibold text-muted-foreground tracking-wide">
-            Care, together.
-          </p>
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            aria-label="Sign out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </header>
 

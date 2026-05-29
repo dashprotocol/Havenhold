@@ -32,8 +32,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [meLoading, setMeLoading] = useState(false);
   const [activePatientId, setActivePatientIdState] = useState<string | null>(null);
 
+  const userId = session?.user?.id;
+
   useEffect(() => {
-    if (!session?.user) {
+    if (!userId) {
       setMeData(null);
       setActivePatientIdState(null);
       return;
@@ -55,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => setMeData(null))
       .finally(() => setMeLoading(false));
-  }, [session?.user?.id]);
+  }, [userId]);
 
   const setActivePatientId = (id: string) => {
     setActivePatientIdState(id);

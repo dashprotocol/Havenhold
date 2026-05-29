@@ -62,8 +62,14 @@ commentsRouter.post('/', async (req, res) => {
       include: { author: true },
     });
     res.status(201).json(comment);
-  } catch (err: any) {
-    if (err.status === 404) return res.status(404).json({ error: err.message });
+  } catch (err: unknown) {
+    if (
+      err instanceof Error &&
+      'status' in err &&
+      (err as Error & { status: unknown }).status === 404
+    ) {
+      return res.status(404).json({ error: err.message });
+    }
     res.status(500).json({ error: 'Failed to create comment' });
   }
 });

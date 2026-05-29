@@ -66,7 +66,7 @@ export default function AddAppointmentPage() {
 
         <button
           onClick={() => mutation.mutate()}
-          disabled={!form.title || !form.datetime || mutation.isPending}
+          disabled={!form.title || !form.datetime || !activePatientId || mutation.isPending}
           className="havenhold-btn-primary w-full disabled:opacity-50"
         >
           {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Appointment"}

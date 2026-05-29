@@ -167,7 +167,7 @@ export default function DocumentUploadPage() {
                   ))}
                 </div>
               </div>
-              <button onClick={handleUpload} className="havenhold-btn-primary w-full">
+              <button onClick={handleUpload} disabled={!activePatientId} className="havenhold-btn-primary w-full disabled:opacity-50">
                 Upload & Process
               </button>
             </>

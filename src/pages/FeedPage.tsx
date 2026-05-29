@@ -40,21 +40,21 @@ function feedDescription(item: FeedItem): string {
 
 export default function FeedPage() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { activePatientId } = useAuth();
   const { data: feed = [], isLoading } = useQuery({
-    queryKey: ["feed", user?.patientId],
-    queryFn: () => fetchFeed(user!.patientId),
-    enabled: !!user?.patientId,
+    queryKey: ["feed", activePatientId],
+    queryFn: () => fetchFeed(activePatientId!),
+    enabled: !!activePatientId,
   });
 
   useEffect(() => {
-    if (!user?.patientId) return;
-    return subscribeToFeed(user.patientId, (event) => {
+    if (!activePatientId) return;
+    return subscribeToFeed(activePatientId, (event) => {
       if (event.type === "feed_refresh") {
         queryClient.invalidateQueries({ queryKey: ["feed"] });
       }
     });
-  }, [user?.patientId, queryClient]);
+  }, [activePatientId, queryClient]);
 
   return (
     <div className="space-y-5">

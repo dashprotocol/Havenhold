@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
+import { assertPatientMembership } from '../middleware/sessionAuth';
 
 export const commentsRouter = Router();
 
@@ -28,7 +29,7 @@ commentsRouter.post('/', async (req, res) => {
     const { body, documentId, appointmentId, medicationId } = req.body;
 
     const provided: { type: 'document' | 'appointment' | 'medication'; id: string }[] = [
-      ...(documentId   ? [{ type: 'document'    as const, id: documentId }]   : []),
+      ...(documentId    ? [{ type: 'document'    as const, id: documentId }]    : []),
       ...(appointmentId ? [{ type: 'appointment' as const, id: appointmentId }] : []),
       ...(medicationId  ? [{ type: 'medication'  as const, id: medicationId }]  : []),
     ];
@@ -37,19 +38,32 @@ commentsRouter.post('/', async (req, res) => {
       return res.status(400).json({ error: 'A documentId, appointmentId, or medicationId is required' });
     }
 
-    // Verify ownership for every provided entity — prevents cross-tenant writes
-    for (const { type, id } of provided) {
-      const ownerPatientId = await resolveEntityPatientId(type, id);
-      if (!ownerPatientId) return res.status(404).json({ error: `${type} not found` });
-      if (ownerPatientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+    // Resolve patientId for every provided entity
+    const patientIds = await Promise.all(
+      provided.map(async ({ type, id }) => {
+        const ownerPatientId = await resolveEntityPatientId(type, id);
+        if (!ownerPatientId) throw Object.assign(new Error(`${type} not found`), { status: 404 });
+        return ownerPatientId;
+      })
+    );
+
+    // All entities must belong to the same patient — prevents cross-patient comment linking
+    const uniquePatientIds = new Set(patientIds);
+    if (uniquePatientIds.size > 1) {
+      return res.status(400).json({ error: 'All entities must belong to the same patient' });
     }
+
+    const patientId = patientIds[0];
+    const membership = await assertPatientMembership(req.user!.id, patientId);
+    if (!membership) return res.status(403).json({ error: 'Access denied' });
 
     const comment = await prisma.comment.create({
       data: { authorId: req.user!.id, body, documentId, appointmentId, medicationId },
       include: { author: true },
     });
     res.status(201).json(comment);
-  } catch (err) {
+  } catch (err: any) {
+    if (err.status === 404) return res.status(404).json({ error: err.message });
     res.status(500).json({ error: 'Failed to create comment' });
   }
 });
@@ -65,7 +79,9 @@ commentsRouter.get('/:entityType/:entityId', async (req, res) => {
 
     const ownerPatientId = await resolveEntityPatientId(entityType, entityId);
     if (!ownerPatientId) return res.status(404).json({ error: 'Entity not found' });
-    if (ownerPatientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+
+    const membership = await assertPatientMembership(req.user!.id, ownerPatientId);
+    if (!membership) return res.status(403).json({ error: 'Access denied' });
 
     const where: Record<string, string> = {};
     if (entityType === 'document') where.documentId = entityId;

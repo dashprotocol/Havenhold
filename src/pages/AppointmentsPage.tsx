@@ -8,11 +8,11 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function AppointmentsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { activePatientId } = useAuth();
   const { data: appointments = [], isLoading } = useQuery({
-    queryKey: ["appointments", user?.patientId],
-    queryFn: () => fetchAppointments(user!.patientId),
-    enabled: !!user?.patientId,
+    queryKey: ["appointments", activePatientId],
+    queryFn: () => fetchAppointments(activePatientId!),
+    enabled: !!activePatientId,
   });
 
   const grouped = appointments.reduce<Record<string, Appointment[]>>((acc, apt) => {

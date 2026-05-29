@@ -11,12 +11,6 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
-  user: {
-    additionalFields: {
-      patientId: { type: 'string', required: false, input: false },
-      role: { type: 'string', required: false, input: false },
-    },
-  },
   session: {
     expiresIn: 60 * 60 * 24 * 7,
   },

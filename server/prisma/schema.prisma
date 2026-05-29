@@ -8,17 +8,15 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String          @id @default(cuid())
   name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false)
+  email         String          @unique
+  emailVerified Boolean         @default(false)
   image         String?
-  role          Role      @default(FAMILY_MEMBER)
   avatarUrl     String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  patientId     String?
-  patient       Patient?  @relation(fields: [patientId], references: [id])
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  members       PatientMember[]
   comments      Comment[]
   sessions      Session[]
   accounts      Account[]
@@ -64,28 +62,44 @@ model Verification {
   updatedAt  DateTime  @updatedAt
 }
 
-enum Role {
-  PRIMARY_CAREGIVER
-  FAMILY_MEMBER
+model Patient {
+  id           String                  @id @default(cuid())
+  name         String
+  dateOfBirth  DateTime?
+  analysisType AnalysisType            @default(BALANCED)
+  createdAt    DateTime                @default(now())
+  members      PatientMember[]
+  appointments Appointment[]
+  medications  Medication[]
+  documents    Document[]
+  interactions MedicationInteraction[]
 }
 
-model Patient {
-  id              String                  @id @default(cuid())
-  name            String
-  dateOfBirth     DateTime?
-  analysisType    AnalysisType            @default(BALANCED)
-  createdAt       DateTime                @default(now())
-  users           User[]
-  appointments    Appointment[]
-  medications     Medication[]
-  documents       Document[]
-  interactions    MedicationInteraction[]
+model PatientMember {
+  id        String     @id @default(cuid())
+  patientId String
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      MemberRole @default(VIEWER)
+  invitedBy String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([patientId, userId])
+  @@index([userId])
+}
+
+enum MemberRole {
+  OWNER
+  EDITOR
+  VIEWER
 }
 
 model Appointment {
-  id               String    @id @default(cuid())
+  id               String       @id @default(cuid())
   patientId        String
-  patient          Patient   @relation(fields: [patientId], references: [id])
+  patient          Patient      @relation(fields: [patientId], references: [id])
   title            String
   doctor           String?
   specialty        String?

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import { requirePatientAccess } from '../middleware/sessionAuth';
+import { requirePatientAccess, assertPatientMembership } from '../middleware/sessionAuth';
 
 export const appointmentsRouter = Router();
 
@@ -44,7 +44,8 @@ appointmentsRouter.patch('/:id', async (req, res) => {
       select: { patientId: true },
     });
     if (!appt) return res.status(404).json({ error: 'Not found' });
-    if (appt.patientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+    const membership = await assertPatientMembership(req.user!.id, appt.patientId);
+    if (!membership) return res.status(403).json({ error: 'Access denied' });
 
     const { title, doctor, specialty, datetime, location, notes } = req.body;
     const appointment = await prisma.appointment.update({
@@ -72,7 +73,8 @@ appointmentsRouter.patch('/:id/review', async (req, res) => {
       select: { patientId: true },
     });
     if (!appt) return res.status(404).json({ error: 'Not found' });
-    if (appt.patientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+    const membership = await assertPatientMembership(req.user!.id, appt.patientId);
+    if (!membership) return res.status(403).json({ error: 'Access denied' });
 
     const { action } = req.body as { action: 'confirm' | 'reject' };
     if (!['confirm', 'reject'].includes(action)) {
@@ -95,7 +97,8 @@ appointmentsRouter.get('/:id/ical', async (req, res) => {
       where: { id: req.params.id },
     });
     if (!appt) return res.status(404).json({ error: 'Not found' });
-    if (appt.patientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+    const membership = await assertPatientMembership(req.user!.id, appt.patientId);
+    if (!membership) return res.status(403).json({ error: 'Access denied' });
 
     const start = new Date(appt.datetime);
     const end = new Date(start.getTime() + 60 * 60 * 1000); // 1hr default

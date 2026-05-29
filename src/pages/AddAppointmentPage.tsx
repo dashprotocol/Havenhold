@@ -8,13 +8,13 @@ import { useAuth } from "@/contexts/AuthContext";
 export default function AddAppointmentPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { activePatientId } = useAuth();
   const [form, setForm] = useState({
     title: "", doctor: "", specialty: "", datetime: "", location: "", notes: "",
   });
 
   const mutation = useMutation({
-    mutationFn: () => createAppointment({ ...form, patientId: user!.patientId }),
+    mutationFn: () => createAppointment({ ...form, patientId: activePatientId! }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
       queryClient.invalidateQueries({ queryKey: ["feed"] });

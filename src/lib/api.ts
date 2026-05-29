@@ -77,9 +77,12 @@ export const createComment = (data: CreateCommentInput) =>
 export const fetchComments = (entityType: string, entityId: string) =>
   request<Comment[]>(`/comments/${entityType}/${entityId}`);
 
+// Me — current user with memberships
+export const fetchMe = () => request<MeResponse>('/me');
+
 // Family
 export const fetchFamily = (patientId: string) =>
-  request<User[]>(`/family/${patientId}`);
+  request<FamilyMember[]>(`/family/${patientId}`);
 
 // SSE helper — returns a cleanup function
 export function subscribeToFeed(
@@ -181,8 +184,29 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'PRIMARY_CAREGIVER' | 'FAMILY_MEMBER';
   avatarUrl?: string;
+}
+
+export type MemberRole = 'OWNER' | 'EDITOR' | 'VIEWER';
+
+export interface PatientMembership {
+  id: string;
+  role: MemberRole;
+  patient: { id: string; name: string };
+}
+
+export interface MeResponse {
+  id: string;
+  name: string;
+  email: string;
+  memberships: PatientMembership[];
+}
+
+export interface FamilyMember {
+  id: string;
+  role: MemberRole;
+  createdAt: string;
+  user: User;
 }
 
 export interface CreateAppointmentInput {

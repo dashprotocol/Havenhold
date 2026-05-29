@@ -11,6 +11,7 @@ import { documentsRouter } from './routes/documents';
 import { feedRouter } from './routes/feed';
 import { commentsRouter } from './routes/comments';
 import { familyRouter } from './routes/family';
+import { meRouter } from './routes/me';
 
 console.log(
   `[flags] PIPELINE_ENABLED=${flags.PIPELINE_ENABLED}  INTEGRATIONS_ENABLED=${flags.INTEGRATIONS_ENABLED}`,
@@ -47,6 +48,7 @@ app.use('/api/documents',    requireAuth, documentsRouter);
 app.use('/api/feed',         requireAuth, feedRouter);
 app.use('/api/comments',     requireAuth, commentsRouter);
 app.use('/api/family',       requireAuth, familyRouter);
+app.use('/api/me',          requireAuth, meRouter);
 
 app.listen(PORT, () => {
   console.log(`Havenhold server running on http://localhost:${PORT}`);

@@ -17,17 +17,23 @@ log "1/12 Checking prerequisites"
 command -v node  >/dev/null 2>&1 || { echo "ERROR: node not found"; exit 1; }
 command -v npm   >/dev/null 2>&1 || { echo "ERROR: npm not found"; exit 1; }
 command -v git   >/dev/null 2>&1 || { echo "ERROR: git not found"; exit 1; }
-[[ -f "$SERVER_DIR/.env" ]]       || { echo "ERROR: $SERVER_DIR/.env not found — create it first"; exit 1; }
+[[ -f "$SERVER_DIR/.env" ]]       || { echo "ERROR: $SERVER_DIR/.env not found — CI/CD writes this via SCP; for manual deploys create it from server/.env.example"; exit 1; }
 
 # Frontend env vars are baked in at build time — require the .env file and validate
 # required vars before building.
 FRONTEND_ENV="$APP_DIR/.env"
 [[ -f "$FRONTEND_ENV" ]] \
-  || { echo "ERROR: $FRONTEND_ENV not found — create it from .env.example before deploying"; exit 1; }
+  || { echo "ERROR: $FRONTEND_ENV not found — CI/CD writes this via SCP; for manual deploys create it from .env.example"; exit 1; }
 grep -qE '^VITE_AUTH_BASE_URL=.+' "$FRONTEND_ENV" \
   || { echo "ERROR: VITE_AUTH_BASE_URL not set in $FRONTEND_ENV — auth will silently target localhost in production browsers"; exit 1; }
 grep -qE '^VITE_API_BASE_URL=.+' "$FRONTEND_ENV" \
   || { echo "ERROR: VITE_API_BASE_URL not set in $FRONTEND_ENV"; exit 1; }
+
+# Fix ownership — havenhold systemd service user must be able to read EnvironmentFile
+chown "${SUDO_USER:-root}:havenhold" "$SERVER_DIR/.env" "$FRONTEND_ENV" \
+  || { echo "ERROR: Failed to set .env ownership to ${SUDO_USER:-root}:havenhold"; exit 1; }
+chmod 640 "$SERVER_DIR/.env" "$FRONTEND_ENV" \
+  || { echo "ERROR: Failed to set .env permissions to 640"; exit 1; }
 
 # ── 2. Pull latest code ───────────────────────────────────────────────────────
 log "2/12 Pulling $BRANCH"

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import { requirePatientAccess, assertPatientMembership } from '../middleware/sessionAuth';
+import { requirePatientAccess, requireWriteAccess, assertPatientMembership, canWrite } from '../middleware/sessionAuth';
 
 export const appointmentsRouter = Router();
 
@@ -24,7 +24,7 @@ appointmentsRouter.get('/:patientId', requirePatientAccess, async (req, res) => 
 });
 
 // Create appointment manually
-appointmentsRouter.post('/', requirePatientAccess, async (req, res) => {
+appointmentsRouter.post('/', requirePatientAccess, requireWriteAccess, async (req, res) => {
   try {
     const { patientId, title, doctor, specialty, datetime, location, notes } = req.body;
     const appointment = await prisma.appointment.create({
@@ -45,7 +45,7 @@ appointmentsRouter.patch('/:id', async (req, res) => {
     });
     if (!appt) return res.status(404).json({ error: 'Not found' });
     const membership = await assertPatientMembership(req.user!.id, appt.patientId);
-    if (!membership) return res.status(403).json({ error: 'Access denied' });
+    if (!membership || !canWrite(membership.role)) return res.status(403).json({ error: 'Access denied' });
 
     const { title, doctor, specialty, datetime, location, notes } = req.body;
     const appointment = await prisma.appointment.update({
@@ -74,7 +74,7 @@ appointmentsRouter.patch('/:id/review', async (req, res) => {
     });
     if (!appt) return res.status(404).json({ error: 'Not found' });
     const membership = await assertPatientMembership(req.user!.id, appt.patientId);
-    if (!membership) return res.status(403).json({ error: 'Access denied' });
+    if (!membership || !canWrite(membership.role)) return res.status(403).json({ error: 'Access denied' });
 
     const { action } = req.body as { action: 'confirm' | 'reject' };
     if (!['confirm', 'reject'].includes(action)) {

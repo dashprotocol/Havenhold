@@ -1,50 +1,45 @@
-import assert from 'node:assert/strict';
-import test from 'node:test';
+import { describe, expect, it } from 'vitest';
 import { parseBool } from './flags';
 
-// ---------------------------------------------------------------------------
-// parseBool unit tests
-// ---------------------------------------------------------------------------
+describe('parseBool', () => {
+  it('returns default when env var is absent', () => {
+    expect(parseBool(undefined, true)).toBe(true);
+    expect(parseBool(undefined, false)).toBe(false);
+  });
 
-test('parseBool returns default when env var is absent', () => {
-  assert.equal(parseBool(undefined, true), true);
-  assert.equal(parseBool(undefined, false), false);
+  it('returns default for empty string', () => {
+    expect(parseBool('', true)).toBe(true);
+    expect(parseBool('', false)).toBe(false);
+  });
+
+  it('parses truthy strings', () => {
+    expect(parseBool('true', false)).toBe(true);
+    expect(parseBool('1', false)).toBe(true);
+    expect(parseBool('TRUE', false)).toBe(true);
+    expect(parseBool('  True  ', false)).toBe(true);
+  });
+
+  it('parses falsy strings', () => {
+    expect(parseBool('false', true)).toBe(false);
+    expect(parseBool('0', true)).toBe(false);
+    expect(parseBool('FALSE', true)).toBe(false);
+    expect(parseBool('  False  ', true)).toBe(false);
+  });
+
+  it('falls back to default for unrecognised values', () => {
+    expect(parseBool('yes', false)).toBe(false);
+    expect(parseBool('no', true)).toBe(true);
+    expect(parseBool('enabled', false)).toBe(false);
+    expect(parseBool('on', true)).toBe(true);
+  });
 });
 
-test('parseBool returns default for empty string', () => {
-  assert.equal(parseBool('', true), true);
-  assert.equal(parseBool('', false), false);
-});
+describe('safe defaults', () => {
+  it('PIPELINE_ENABLED defaults to true when env var is unset', () => {
+    expect(parseBool(undefined, true)).toBe(true);
+  });
 
-test('parseBool parses truthy strings', () => {
-  assert.equal(parseBool('true', false), true);
-  assert.equal(parseBool('1', false), true);
-  assert.equal(parseBool('TRUE', false), true);
-  assert.equal(parseBool('  True  ', false), true);
-});
-
-test('parseBool parses falsy strings', () => {
-  assert.equal(parseBool('false', true), false);
-  assert.equal(parseBool('0', true), false);
-  assert.equal(parseBool('FALSE', true), false);
-  assert.equal(parseBool('  False  ', true), false);
-});
-
-test('parseBool falls back to default for unrecognised values', () => {
-  assert.equal(parseBool('yes', false), false);
-  assert.equal(parseBool('no', true), true);
-  assert.equal(parseBool('enabled', false), false);
-  assert.equal(parseBool('on', true), true);
-});
-
-// ---------------------------------------------------------------------------
-// Safe-default contract tests
-// ---------------------------------------------------------------------------
-
-test('PIPELINE_ENABLED defaults to true when env var is unset', () => {
-  assert.equal(parseBool(undefined, true), true, 'PIPELINE_ENABLED safe default must be true');
-});
-
-test('INTEGRATIONS_ENABLED defaults to false when env var is unset', () => {
-  assert.equal(parseBool(undefined, false), false, 'INTEGRATIONS_ENABLED safe default must be false');
+  it('INTEGRATIONS_ENABLED defaults to false when env var is unset', () => {
+    expect(parseBool(undefined, false)).toBe(false);
+  });
 });

@@ -1,5 +1,4 @@
-import assert from 'node:assert/strict';
-import test from 'node:test';
+import { describe, expect, it } from 'vitest';
 import { AnalysisType } from '@prisma/client';
 import {
   getAnalysisType,
@@ -8,42 +7,43 @@ import {
   toMedicationInteractionCandidate,
 } from './validation';
 
-test('normalizeSeverity accepts case-insensitive values', () => {
-  assert.equal(normalizeSeverity('Severe'), 'SEVERE');
-  assert.equal(normalizeSeverity(' moderate '), 'MODERATE');
-  assert.equal(normalizeSeverity('MILD'), 'MILD');
-  assert.equal(normalizeSeverity('unknown'), null);
-});
-
-test('toMedicationInteractionCandidate validates and normalizes payloads', () => {
-  const candidate = toMedicationInteractionCandidate({
-    medicationA: 'Warfarin',
-    medicationB: 'Aspirin',
-    severity: 'Severe',
-    description: 'Increased bleeding risk',
+describe('validation helpers', () => {
+  it('normalizeSeverity accepts case-insensitive values', () => {
+    expect(normalizeSeverity('Severe')).toBe('SEVERE');
+    expect(normalizeSeverity(' moderate ')).toBe('MODERATE');
+    expect(normalizeSeverity('MILD')).toBe('MILD');
+    expect(normalizeSeverity('unknown')).toBeNull();
   });
 
-  assert.deepEqual(candidate, {
-    medicationA: 'Warfarin',
-    medicationB: 'Aspirin',
-    severity: 'SEVERE',
-    description: 'Increased bleeding risk',
+  it('toMedicationInteractionCandidate validates and normalizes payloads', () => {
+    const candidate = toMedicationInteractionCandidate({
+      medicationA: 'Warfarin',
+      medicationB: 'Aspirin',
+      severity: 'Severe',
+      description: 'Increased bleeding risk',
+    });
+
+    expect(candidate).toEqual({
+      medicationA: 'Warfarin',
+      medicationB: 'Aspirin',
+      severity: 'SEVERE',
+      description: 'Increased bleeding risk',
+    });
+
+    expect(
+      toMedicationInteractionCandidate({ medicationA: 'A', medicationB: 'B', severity: 'invalid', description: 'x' }),
+    ).toBeNull();
   });
 
-  assert.equal(
-    toMedicationInteractionCandidate({ medicationA: 'A', medicationB: 'B', severity: 'invalid', description: 'x' }),
-    null,
-  );
-});
+  it('sanitizeQuestions keeps only non-empty strings', () => {
+    const questions = sanitizeQuestions(['What changed?', 42, { q: 'next?' }, '   ', 'How often?']);
+    expect(questions).toEqual(['What changed?', 'How often?']);
+    expect(sanitizeQuestions('not-an-array')).toEqual([]);
+  });
 
-test('sanitizeQuestions keeps only non-empty strings', () => {
-  const questions = sanitizeQuestions(['What changed?', 42, { q: 'next?' }, '   ', 'How often?']);
-  assert.deepEqual(questions, ['What changed?', 'How often?']);
-  assert.deepEqual(sanitizeQuestions('not-an-array'), []);
-});
-
-test('getAnalysisType falls back safely', () => {
-  assert.equal(getAnalysisType('SCIENTIFIC'), AnalysisType.SCIENTIFIC);
-  assert.equal(getAnalysisType('NOT_A_TYPE'), AnalysisType.BALANCED);
-  assert.equal(getAnalysisType(undefined), AnalysisType.BALANCED);
+  it('getAnalysisType falls back safely', () => {
+    expect(getAnalysisType('SCIENTIFIC')).toBe(AnalysisType.SCIENTIFIC);
+    expect(getAnalysisType('NOT_A_TYPE')).toBe(AnalysisType.BALANCED);
+    expect(getAnalysisType(undefined)).toBe(AnalysisType.BALANCED);
+  });
 });

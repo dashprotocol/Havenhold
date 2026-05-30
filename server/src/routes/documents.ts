@@ -7,7 +7,7 @@ import { prisma } from '../lib/prisma';
 import { runPipeline } from '../lib/pipeline';
 import { getAnalysisType } from '../lib/validation';
 import { broadcastFeedEvent } from './feed';
-import { requirePatientAccess, assertPatientMembership } from '../middleware/sessionAuth';
+import { requirePatientAccess, assertPatientMembership, canWrite } from '../middleware/sessionAuth';
 
 export const documentsRouter = Router();
 
@@ -62,7 +62,7 @@ documentsRouter.post(
 
       // Ownership check — must happen after multer so req.body is populated
       const membership = await assertPatientMembership(req.user!.id, patientId);
-      if (!membership) {
+      if (!membership || !canWrite(membership.role)) {
         cleanup();
         return res.status(403).json({ error: 'Access denied' });
       }

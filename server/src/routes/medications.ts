@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import { requirePatientAccess, assertPatientMembership } from '../middleware/sessionAuth';
+import { requirePatientAccess, requireWriteAccess, assertPatientMembership, canWrite } from '../middleware/sessionAuth';
 
 export const medicationsRouter = Router();
 
@@ -23,7 +23,7 @@ medicationsRouter.get('/:patientId', requirePatientAccess, async (req, res) => {
 });
 
 // Create medication manually
-medicationsRouter.post('/', requirePatientAccess, async (req, res) => {
+medicationsRouter.post('/', requirePatientAccess, requireWriteAccess, async (req, res) => {
   try {
     const { patientId, name, dosage, frequency, prescribingDoctor } = req.body;
     const medication = await prisma.medication.create({
@@ -44,7 +44,7 @@ medicationsRouter.patch('/:id/review', async (req, res) => {
     });
     if (!med) return res.status(404).json({ error: 'Not found' });
     const membership = await assertPatientMembership(req.user!.id, med.patientId);
-    if (!membership) return res.status(403).json({ error: 'Access denied' });
+    if (!membership || !canWrite(membership.role)) return res.status(403).json({ error: 'Access denied' });
 
     const { action } = req.body as { action: 'confirm' | 'reject' };
     if (!['confirm', 'reject'].includes(action)) {
@@ -69,7 +69,7 @@ medicationsRouter.patch('/:id', async (req, res) => {
     });
     if (!med) return res.status(404).json({ error: 'Not found' });
     const membership = await assertPatientMembership(req.user!.id, med.patientId);
-    if (!membership) return res.status(403).json({ error: 'Access denied' });
+    if (!membership || !canWrite(membership.role)) return res.status(403).json({ error: 'Access denied' });
 
     const { name, dosage, frequency, prescribingDoctor, active } = req.body;
     const medication = await prisma.medication.update({

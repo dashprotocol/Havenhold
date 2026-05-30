@@ -8,7 +8,7 @@ import { flags } from './config/flags';
 import { appointmentsRouter } from './routes/appointments';
 import { medicationsRouter } from './routes/medications';
 import { documentsRouter } from './routes/documents';
-import { feedRouter } from './routes/feed';
+import { feedRouter, closeAllFeedStreams } from './routes/feed';
 import { commentsRouter } from './routes/comments';
 import { familyRouter } from './routes/family';
 import { meRouter } from './routes/me';
@@ -50,6 +50,25 @@ app.use('/api/comments',     requireAuth, commentsRouter);
 app.use('/api/family',       requireAuth, familyRouter);
 app.use('/api/me',          requireAuth, meRouter);
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Havenhold server running on http://localhost:${PORT}`);
 });
+
+let shuttingDown = false;
+function gracefulShutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] Received ${signal}, draining SSE clients and closing server...`);
+  closeAllFeedStreams(signal);
+  server.close(() => {
+    console.log('[shutdown] HTTP server closed.');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.error('[shutdown] Forced exit after timeout.');
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

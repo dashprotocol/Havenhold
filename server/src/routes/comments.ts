@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import { assertPatientMembership } from '../middleware/sessionAuth';
+import { assertPatientMembership, canWrite } from '../middleware/sessionAuth';
 
 export const commentsRouter = Router();
 
@@ -55,7 +55,7 @@ commentsRouter.post('/', async (req, res) => {
 
     const patientId = patientIds[0];
     const membership = await assertPatientMembership(req.user!.id, patientId);
-    if (!membership) return res.status(403).json({ error: 'Access denied' });
+    if (!membership || !canWrite(membership.role)) return res.status(403).json({ error: 'Access denied' });
 
     const comment = await prisma.comment.create({
       data: { authorId: req.user!.id, body, documentId, appointmentId, medicationId },

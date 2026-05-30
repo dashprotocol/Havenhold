@@ -40,7 +40,9 @@ export function canWrite(role: MemberRole): boolean {
   return role === MemberRole.OWNER || role === MemberRole.EDITOR;
 }
 
-// ── Middleware factories (used by tests to inject mock dependencies) ──────────
+// ── Middleware factories ───────────────────────────────────────────────────────
+// Production instances are constructed below; factories are also used in tests
+// to inject mock dependencies without module-level mocking.
 
 export function createRequireAuth(getSession: GetSessionFn): RequestHandler {
   return async function requireAuth(req, res, next) {

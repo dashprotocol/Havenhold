@@ -9,20 +9,16 @@ import {
   type PatientMemberInfo,
 } from './sessionAuth';
 
-function makeRes() {
-  const res: any = {};
-  res.status = vi.fn((code: number) => {
-    res._status = code;
-    return res;
-  });
-  res.json = vi.fn((body: unknown) => {
-    res._body = body;
-    return res;
-  });
+type MockRes = { status: ReturnType<typeof vi.fn>; json: ReturnType<typeof vi.fn>; _status: number; _body: unknown };
+
+function makeRes(): MockRes {
+  const res = {} as MockRes;
+  res.status = vi.fn((code: number) => { res._status = code; return res; });
+  res.json   = vi.fn((body: unknown)  => { res._body  = body; return res; });
   return res;
 }
 
-function makeReq(overrides: Record<string, unknown> = {}): any {
+function makeReq(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return { headers: {}, params: {}, body: {}, ...overrides };
 }
 
@@ -105,8 +101,8 @@ describe('requireAuth', () => {
   });
 
   it('401 when session.user is null', async () => {
-    const getSession = vi.fn(async () => ({ user: null }));
-    const mw = createRequireAuth(getSession as any);
+    const getSession = vi.fn(async () => ({ user: null as unknown as { id: string; email: string; name: string } }));
+    const mw = createRequireAuth(getSession);
     const req = makeReq();
     const res = makeRes();
     const next = vi.fn();

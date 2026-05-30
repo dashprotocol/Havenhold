@@ -4,6 +4,9 @@ import { hashPassword } from 'better-auth/crypto';
 
 const prisma = new PrismaClient();
 
+const SEED_PASSWORD = process.env.SEED_PASSWORD;
+if (!SEED_PASSWORD) throw new Error('SEED_PASSWORD env var is required to run seed');
+
 // Stable IDs — deterministic upserts for entities without natural unique keys
 const PATIENT_ID     = 'seed-patient-margaret';
 const MED_LISI_ID    = 'seed-med-lisinopril';
@@ -19,9 +22,9 @@ async function upsertUser(name: string, email: string) {
   });
 
   if (!existing) {
-    await auth.api.signUpEmail({ body: { name, email, password: 'devpassword123' } });
+    await auth.api.signUpEmail({ body: { name, email, password: SEED_PASSWORD! } });
   } else if (existing.accounts.length === 0) {
-    const hashed = await hashPassword('devpassword123');
+    const hashed = await hashPassword(SEED_PASSWORD!);
     await prisma.account.create({
       data: {
         accountId: existing.id,
@@ -145,7 +148,7 @@ async function main() {
   });
 
   console.log(`✓ Patient: ${margaret.name} (id: ${margaret.id})`);
-  console.log('✓ 3 family members (login: david@example.com / devpassword123)');
+  console.log('✓ 3 family members (login: david@example.com / $SEED_PASSWORD)');
   console.log('  david  → OWNER');
   console.log('  sarah  → EDITOR');
   console.log('  michael → VIEWER');

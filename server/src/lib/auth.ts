@@ -10,12 +10,7 @@ export const auth = betterAuth({
     : ['http://localhost:5173', 'http://localhost:8080', 'http://localhost:3000'],
   emailAndPassword: {
     enabled: true,
-  },
-  user: {
-    additionalFields: {
-      patientId: { type: 'string', required: false, input: false },
-      role: { type: 'string', required: false, input: false },
-    },
+    disableSignUp: true,
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7,

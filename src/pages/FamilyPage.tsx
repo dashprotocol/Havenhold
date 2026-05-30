@@ -1,19 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
-import { Shield, User, Clock } from "lucide-react";
-import { fetchFamily, type User as FamilyMember } from "@/lib/api";
+import { Shield, Eye, User, Clock } from "lucide-react";
+import { fetchFamily, type FamilyMember, type MemberRole } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
-const roleLabel: Record<FamilyMember["role"], string> = {
-  PRIMARY_CAREGIVER: "Primary Caregiver",
-  FAMILY_MEMBER: "Family Member",
+const roleLabel: Record<MemberRole, string> = {
+  OWNER: "Owner",
+  EDITOR: "Editor",
+  VIEWER: "Viewer",
 };
 
 export default function FamilyPage() {
-  const { user } = useAuth();
+  const { activePatientId } = useAuth();
   const { data: members = [], isLoading } = useQuery({
-    queryKey: ["family", user?.patientId],
-    queryFn: () => fetchFamily(user!.patientId),
-    enabled: !!user?.patientId,
+    queryKey: ["family", activePatientId],
+    queryFn: () => fetchFamily(activePatientId!),
+    enabled: !!activePatientId,
   });
 
   return (
@@ -43,22 +44,27 @@ export default function FamilyPage() {
         {members.map((member) => (
           <div key={member.id} className="havenhold-card flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-primary/15 text-primary flex items-center justify-center text-lg font-bold shrink-0">
-              {member.name.charAt(0)}
+              {member.user.name.charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-base">{member.name}</h3>
-              <p className="text-sm text-muted-foreground">{member.email}</p>
+              <h3 className="font-bold text-base">{member.user.name}</h3>
+              <p className="text-sm text-muted-foreground">{member.user.email}</p>
             </div>
             <div className="flex flex-col items-end gap-1">
-              {member.role === "PRIMARY_CAREGIVER" ? (
+              {member.role === "OWNER" ? (
                 <span className="flex items-center gap-1 text-xs text-primary font-semibold">
                   <Shield className="w-3.5 h-3.5" />
-                  Caregiver
+                  {roleLabel.OWNER}
+                </span>
+              ) : member.role === "EDITOR" ? (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <User className="w-3.5 h-3.5" />
+                  {roleLabel.EDITOR}
                 </span>
               ) : (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <User className="w-3.5 h-3.5" />
-                  {roleLabel[member.role]}
+                  <Eye className="w-3.5 h-3.5" />
+                  {roleLabel.VIEWER}
                 </span>
               )}
             </div>

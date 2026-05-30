@@ -26,11 +26,11 @@ const statusLabel = {
 };
 
 export default function DocumentsPage() {
-  const { user } = useAuth();
+  const { activePatientId } = useAuth();
   const { data: documents = [], isLoading } = useQuery({
-    queryKey: ["documents", user?.patientId],
-    queryFn: () => fetchDocuments(user!.patientId),
-    enabled: !!user?.patientId,
+    queryKey: ["documents", activePatientId],
+    queryFn: () => fetchDocuments(activePatientId!),
+    enabled: !!activePatientId,
   });
 
   return (

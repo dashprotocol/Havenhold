@@ -60,9 +60,9 @@ log "7/12 Running Prisma migrations"
 cd "$SERVER_DIR"
 npx prisma migrate deploy || { echo "ERROR: Prisma migration failed — aborting deploy"; exit 1; }
 
-# ── 8. Seed database ──────────────────────────────────────────────────────────
-log "8/12 Seeding database (idempotent)"
-npx prisma db seed
+# ── 8. Seed skipped in automated deploy ──────────────────────────────────────
+# Demo data seeding is a manual step only:
+#   cd /opt/havenhold/server && npx prisma db seed
 
 # ── 9. Restore evidence gate ──────────────────────────────────────────────────
 log "9/12 Checking restore evidence gate"

@@ -7,7 +7,7 @@ import { prisma } from '../lib/prisma';
 import { runPipeline } from '../lib/pipeline';
 import { getAnalysisType } from '../lib/validation';
 import { broadcastFeedEvent } from './feed';
-import { requirePatientAccess } from '../middleware/sessionAuth';
+import { requirePatientAccess, assertPatientMembership } from '../middleware/sessionAuth';
 
 export const documentsRouter = Router();
 
@@ -61,7 +61,8 @@ documentsRouter.post(
       }
 
       // Ownership check — must happen after multer so req.body is populated
-      if (patientId !== req.user!.patientId) {
+      const membership = await assertPatientMembership(req.user!.id, patientId);
+      if (!membership) {
         cleanup();
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -144,7 +145,8 @@ documentsRouter.get('/:id', async (req, res) => {
       },
     });
     if (!document) return res.status(404).json({ error: 'Document not found' });
-    if (document.patientId !== req.user!.patientId) return res.status(403).json({ error: 'Access denied' });
+    const membership = await assertPatientMembership(req.user!.id, document.patientId);
+    if (!membership) return res.status(403).json({ error: 'Access denied' });
     res.json(document);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch document' });

@@ -19,11 +19,11 @@ function getAllInteractions(med: Medication) {
 
 export default function MedicationsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { activePatientId } = useAuth();
   const { data: medications = [], isLoading } = useQuery({
-    queryKey: ["medications", user?.patientId],
-    queryFn: () => fetchMedications(user!.patientId),
-    enabled: !!user?.patientId,
+    queryKey: ["medications", activePatientId],
+    queryFn: () => fetchMedications(activePatientId!),
+    enabled: !!activePatientId,
   });
 
   return (

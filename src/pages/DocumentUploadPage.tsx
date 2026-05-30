@@ -69,7 +69,7 @@ const ANALYSIS_OPTIONS: { value: AnalysisType; label: string; description: strin
 
 export default function DocumentUploadPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { activePatientId } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [analysisType, setAnalysisType] = useState<AnalysisType>("BALANCED");
   const [documentId, setDocumentId] = useState<string | null>(null);
@@ -84,15 +84,15 @@ export default function DocumentUploadPage() {
 
   // Subscribe to SSE once we have a documentId
   useEffect(() => {
-    if (!documentId || !user?.patientId) return;
-    return subscribeToFeed(user.patientId, (event) => {
+    if (!documentId || !activePatientId) return;
+    return subscribeToFeed(activePatientId, (event) => {
       if (event.type === "pipeline" && event.documentId === documentId) {
         if (event.step) setCurrentStatus(event.step);
         if (event.appointmentsAdded) setAppointmentsAdded(event.appointmentsAdded);
         if (event.medicationsAdded) setMedicationsAdded(event.medicationsAdded);
       }
     });
-  }, [documentId, user?.patientId]);
+  }, [documentId, activePatientId]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -100,10 +100,10 @@ export default function DocumentUploadPage() {
   };
 
   const handleUpload = async () => {
-    if (!file || !user?.patientId) return;
+    if (!file || !activePatientId) return;
     setError(null);
     try {
-      const { documentId: id } = await uploadDocument(user.patientId, file, analysisType);
+      const { documentId: id } = await uploadDocument(activePatientId, file, analysisType);
       setDocumentId(id);
       setCurrentStatus("PENDING");
     } catch {
@@ -167,7 +167,7 @@ export default function DocumentUploadPage() {
                   ))}
                 </div>
               </div>
-              <button onClick={handleUpload} className="havenhold-btn-primary w-full">
+              <button onClick={handleUpload} disabled={!activePatientId} className="havenhold-btn-primary w-full disabled:opacity-50">
                 Upload & Process
               </button>
             </>

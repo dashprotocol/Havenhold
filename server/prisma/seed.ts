@@ -1,11 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import { auth } from '../src/lib/auth';
-import { hashPassword } from 'better-auth/crypto';
 
 const prisma = new PrismaClient();
-
-const SEED_PASSWORD = process.env.SEED_PASSWORD;
-if (!SEED_PASSWORD) throw new Error('SEED_PASSWORD env var is required to run seed');
 
 // Stable IDs — deterministic upserts for entities without natural unique keys
 const PATIENT_ID     = 'seed-patient-margaret';
@@ -14,42 +9,6 @@ const MED_MET_ID     = 'seed-med-metformin';
 const APPT_CARDIO_ID = 'seed-appt-cardiology';
 const APPT_REFILL_ID = 'seed-appt-refill';
 const INTER_ID       = 'seed-inter-lisi-met';
-
-async function upsertUser(name: string, email: string) {
-  const existing = await prisma.user.findUnique({
-    where: { email },
-    include: { accounts: { where: { providerId: 'credential' } } },
-  });
-
-  if (!existing) {
-    await auth.api.signUpEmail({ body: { name, email, password: SEED_PASSWORD! } });
-  } else if (existing.accounts.length === 0) {
-    const hashed = await hashPassword(SEED_PASSWORD!);
-    await prisma.account.create({
-      data: {
-        accountId: existing.id,
-        providerId: 'credential',
-        userId: existing.id,
-        password: hashed,
-      },
-    });
-  }
-
-  await prisma.user.update({
-    where: { email },
-    data: { emailVerified: true, updatedAt: new Date() },
-  });
-
-  return prisma.user.findUniqueOrThrow({ where: { email } });
-}
-
-async function upsertMembership(userId: string, patientId: string, role: 'OWNER' | 'EDITOR' | 'VIEWER') {
-  await prisma.patientMember.upsert({
-    where: { patientId_userId: { patientId, userId } },
-    update: { role },
-    create: { patientId, userId, role },
-  });
-}
 
 async function main() {
   console.log('Seeding Havenhold demo data...');
@@ -60,16 +19,6 @@ async function main() {
     update: {},
     create: { id: PATIENT_ID, name: 'Margaret Chen', dateOfBirth: new Date('1945-03-12') },
   });
-
-  // Users
-  const david   = await upsertUser('David Chen',   'david@example.com');
-  const sarah   = await upsertUser('Sarah Chen',   'sarah@example.com');
-  const michael = await upsertUser('Michael Chen', 'michael@example.com');
-
-  // Memberships — David is owner/primary caregiver, others are editors
-  await upsertMembership(david.id,   margaret.id, 'OWNER');
-  await upsertMembership(sarah.id,   margaret.id, 'EDITOR');
-  await upsertMembership(michael.id, margaret.id, 'VIEWER');
 
   // Medications
   const lisinopril = await prisma.medication.upsert({
@@ -148,13 +97,11 @@ async function main() {
   });
 
   console.log(`✓ Patient: ${margaret.name} (id: ${margaret.id})`);
-  console.log('✓ 3 family members (login: david@example.com / $SEED_PASSWORD)');
-  console.log('  david  → OWNER');
-  console.log('  sarah  → EDITOR');
-  console.log('  michael → VIEWER');
   console.log('✓ 2 medications with interaction');
   console.log('✓ 2 upcoming appointments');
-  console.log('\nPatient ID for API calls:', margaret.id);
+  console.log('\nPatient ID:', margaret.id);
+  console.log('Create your account via the API, then link it:');
+  console.log(`  patientMember: { userId: <your-id>, patientId: '${margaret.id}', role: 'OWNER' }`);
 }
 
 main()

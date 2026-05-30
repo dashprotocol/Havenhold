@@ -10,6 +10,7 @@ export const auth = betterAuth({
     : ['http://localhost:5173', 'http://localhost:8080', 'http://localhost:3000'],
   emailAndPassword: {
     enabled: true,
+    disableSignUp: true,
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7,

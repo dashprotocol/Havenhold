@@ -100,8 +100,6 @@ async function main() {
   console.log('✓ 2 medications with interaction');
   console.log('✓ 2 upcoming appointments');
   console.log('\nPatient ID:', margaret.id);
-  console.log('Create your account via the API, then link it:');
-  console.log(`  patientMember: { userId: <your-id>, patientId: '${margaret.id}', role: 'OWNER' }`);
 }
 
 main()

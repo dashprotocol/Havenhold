@@ -102,6 +102,15 @@ export function requireWriteAccess(req: Request, res: Response, next: NextFuncti
   next();
 }
 
+// ── requireOwnerAccess — chains after requirePatientAccess on owner-only routes ─
+
+export function requireOwnerAccess(req: Request, res: Response, next: NextFunction) {
+  if (!req.user)       return res.status(401).json({ error: 'Authentication required' });
+  if (!req.membership) return res.status(403).json({ error: 'Access denied' });
+  if (req.membership.role !== MemberRole.OWNER) return res.status(403).json({ error: 'Access denied' });
+  next();
+}
+
 // ── Production instances ──────────────────────────────────────────────────────
 
 const _getSession: GetSessionFn = (headers) =>

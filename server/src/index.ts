@@ -12,6 +12,7 @@ import { feedRouter, closeAllFeedStreams } from './routes/feed';
 import { commentsRouter } from './routes/comments';
 import { familyRouter } from './routes/family';
 import { meRouter } from './routes/me';
+import { invitesRouter } from './routes/invites';
 
 console.log(
   `[flags] PIPELINE_ENABLED=${flags.PIPELINE_ENABLED}  INTEGRATIONS_ENABLED=${flags.INTEGRATIONS_ENABLED}`,
@@ -49,6 +50,7 @@ app.use('/api/feed',         requireAuth, feedRouter);
 app.use('/api/comments',     requireAuth, commentsRouter);
 app.use('/api/family',       requireAuth, familyRouter);
 app.use('/api/me',          requireAuth, meRouter);
+app.use('/api/invites',     invitesRouter);
 
 const server = app.listen(PORT, () => {
   console.log(`Havenhold server running on http://localhost:${PORT}`);

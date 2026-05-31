@@ -106,6 +106,7 @@ import { documentsRouter } from './documents';
 import { commentsRouter } from './comments';
 import { feedRouter } from './feed';
 import { familyRouter } from './family';
+import { meRouter } from './me';
 
 const U = { id: 'u1', email: 'test@test.com', name: 'Test User' };
 const M = (role: MemberRole) => ({ id: 'm1', patientId: 'p1', role });
@@ -130,6 +131,7 @@ beforeAll(() => {
   app.use('/api/comments', requireAuth, commentsRouter);
   app.use('/api/feed', requireAuth, feedRouter);
   app.use('/api/family', requireAuth, familyRouter);
+  app.use('/api/me', requireAuth, meRouter);
 });
 
 afterAll(async () => {
@@ -364,4 +366,37 @@ describe('VIEWER -> reads succeed', () => {
       expect(res.status).toBe(200);
     });
   }
+});
+
+// H-042: /api/me auth matrix
+describe('GET /api/me', () => {
+  it('unauthenticated -> 401', async () => {
+    state.ctx.user = null;
+    const res = await request(app).get('/api/me');
+    expect(res.status).toBe(401);
+  });
+
+  it('authenticated -> 200 with user shape', async () => {
+    state.ctx.user = U;
+    state.prisma.patientMember.findMany.mockResolvedValueOnce([
+      { id: 'm1', role: MemberRole.OWNER, patient: { id: 'p1', name: 'Patient One' } },
+    ]);
+    const res = await request(app).get('/api/me');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: U.id,
+      name: U.name,
+      email: U.email,
+      memberships: expect.any(Array),
+    });
+  });
+
+  it('memberships scoped to caller userId', async () => {
+    state.ctx.user = U;
+    state.prisma.patientMember.findMany.mockResolvedValueOnce([]);
+    await request(app).get('/api/me');
+    expect(state.prisma.patientMember.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ userId: U.id }) }),
+    );
+  });
 });

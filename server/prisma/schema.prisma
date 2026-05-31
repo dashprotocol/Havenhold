@@ -16,22 +16,28 @@ model User {
   avatarUrl     String?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
+  role          String?
+  banned        Boolean         @default(false)
+  banReason     String?
+  banExpires    DateTime?
   members       PatientMember[]
   comments      Comment[]
   sessions      Session[]
   accounts      Account[]
+  sentInvites   PatientInvite[] @relation("InviteIssuer")
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  expiresAt DateTime
-  token     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ipAddress String?
-  userAgent String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  expiresAt      DateTime
+  token          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  userId         String
+  impersonatedBy String?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Account {
@@ -73,6 +79,7 @@ model Patient {
   medications  Medication[]
   documents    Document[]
   interactions MedicationInteraction[]
+  invites      PatientInvite[]
 }
 
 model PatientMember {
@@ -213,4 +220,28 @@ model Comment {
   appointment   Appointment? @relation(fields: [appointmentId], references: [id])
   medicationId  String?
   medication    Medication?  @relation(fields: [medicationId], references: [id])
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+model PatientInvite {
+  id          String       @id @default(cuid())
+  patientId   String
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  invitedById String
+  invitedBy   User         @relation("InviteIssuer", fields: [invitedById], references: [id])
+  email       String
+  role        MemberRole   @default(VIEWER)
+  tokenHash   String       @unique
+  expiresAt   DateTime
+  status      InviteStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([patientId])
+  @@index([patientId, email])
 }

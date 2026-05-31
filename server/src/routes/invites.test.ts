@@ -195,18 +195,20 @@ describe('POST /api/invites', () => {
     expect(res.status).toBe(201);
   });
 
-  it('OWNER, role=OWNER -> 400', async () => {
+  it('OWNER, role=OWNER -> 400 INVALID_INPUT', async () => {
     state.ctx.user = U;
     state.ctx.membership = OWNER_M;
     const res = await request(app).post('/api/invites').send({ ...body, role: 'OWNER' });
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_INPUT');
   });
 
-  it('missing email -> 400', async () => {
+  it('missing email -> 400 INVALID_INPUT', async () => {
     state.ctx.user = U;
     state.ctx.membership = OWNER_M;
     const res = await request(app).post('/api/invites').send({ patientId: 'p1', role: 'VIEWER' });
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_INPUT');
   });
 
   it('missing patientId -> 400 (requirePatientAccess rejects)', async () => {
@@ -217,23 +219,23 @@ describe('POST /api/invites', () => {
     expect(res.status).toBe(400);
   });
 
-  it('duplicate PENDING invite -> 409', async () => {
+  it('duplicate PENDING invite -> 409 ALREADY_PENDING', async () => {
     state.ctx.user = U;
     state.ctx.membership = OWNER_M;
     state.prisma.patientInvite.findFirst.mockResolvedValueOnce(state.makeInvite());
     const res = await request(app).post('/api/invites').send(body);
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/already pending/i);
+    expect(res.body.code).toBe('ALREADY_PENDING');
   });
 
-  it('invitee already a member -> 409', async () => {
+  it('invitee already a member -> 409 ALREADY_MEMBER', async () => {
     state.ctx.user = U;
     state.ctx.membership = OWNER_M;
     // user exists → patientMember.findUnique (default mockImplementation) returns OWNER_M (truthy)
     state.prisma.user.findUnique.mockResolvedValueOnce({ id: 'u2' });
     const res = await request(app).post('/api/invites').send(body);
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/already a member/i);
+    expect(res.body.code).toBe('ALREADY_MEMBER');
   });
 
   it('sendInviteEmail throws -> row deleted (primary cleanup) -> 500', async () => {
@@ -272,6 +274,75 @@ describe('POST /api/invites', () => {
   });
 });
 
+// ── GET /api/invites/token/:token — preview (public) ─────────────────────────
+
+describe('GET /api/invites/token/:token', () => {
+  const validToken = 'valid-raw-token-32bytes-base64url';
+
+  const makePreviewInvite = (overrides: Partial<{
+    status: InviteStatus;
+    expiresAt: Date;
+  }> = {}) => ({
+    status: InviteStatus.PENDING,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    email: 'invitee@test.com',
+    role: MemberRole.VIEWER,
+    patient: { name: 'Test Patient' },
+    ...overrides,
+  });
+
+  it('unknown token -> 404 NOT_FOUND', async () => {
+    // findUnique default returns null
+    const res = await request(app).get(`/api/invites/token/${validToken}`);
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
+  });
+
+  it('already accepted -> 409 ALREADY_ACCEPTED', async () => {
+    state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
+      makePreviewInvite({ status: InviteStatus.ACCEPTED }) as never,
+    );
+    const res = await request(app).get(`/api/invites/token/${validToken}`);
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ALREADY_ACCEPTED');
+  });
+
+  it('revoked -> 410 REVOKED', async () => {
+    state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
+      makePreviewInvite({ status: InviteStatus.REVOKED }) as never,
+    );
+    const res = await request(app).get(`/api/invites/token/${validToken}`);
+    expect(res.status).toBe(410);
+    expect(res.body.code).toBe('REVOKED');
+  });
+
+  it('expired -> 410 EXPIRED', async () => {
+    state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
+      makePreviewInvite({ expiresAt: new Date(Date.now() - 1000) }) as never,
+    );
+    const res = await request(app).get(`/api/invites/token/${validToken}`);
+    expect(res.status).toBe(410);
+    expect(res.body.code).toBe('EXPIRED');
+  });
+
+  it('valid pending token -> 200 with email/role/patientName/expiresAt; no tokenHash', async () => {
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
+      makePreviewInvite({ expiresAt: future }) as never,
+    );
+    const res = await request(app).get(`/api/invites/token/${validToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      email: 'invitee@test.com',
+      role: MemberRole.VIEWER,
+      patientName: 'Test Patient',
+    });
+    expect(res.body).toHaveProperty('expiresAt');
+    expect(res.body).not.toHaveProperty('tokenHash');
+    expect(res.body).not.toHaveProperty('token');
+  });
+});
+
 // ── GET /api/invites/:patientId ────────────────────────────────────────────────
 
 describe('GET /api/invites/:patientId', () => {
@@ -286,18 +357,20 @@ describe('GET /api/invites/:patientId', () => {
     expect(res.status).toBe(403);
   });
 
-  it('VIEWER -> 403', async () => {
+  it('VIEWER -> 403 FORBIDDEN', async () => {
     state.ctx.user = U;
     state.ctx.membership = VIEWER_M;
     const res = await request(app).get('/api/invites/p1');
     expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
   });
 
-  it('EDITOR -> 403', async () => {
+  it('EDITOR -> 403 FORBIDDEN', async () => {
     state.ctx.user = U;
     state.ctx.membership = EDITOR_M;
     const res = await request(app).get('/api/invites/p1');
     expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
   });
 
   it('OWNER -> 200; items have no token field', async () => {
@@ -329,57 +402,63 @@ describe('POST /api/invites/:token/register', () => {
   const registerBody = { name: 'New User', password: 'password123' };
   const validToken   = 'valid-raw-token-32bytes-base64url';
 
-  it('unknown token -> 404', async () => {
+  it('unknown token -> 404 NOT_FOUND', async () => {
     const res = await request(app).post(`/api/invites/${validToken}/register`).send(registerBody);
     expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
   });
 
-  it('expired token -> 410', async () => {
+  it('expired token -> 410 EXPIRED', async () => {
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
       state.makeInvite({ expiresAt: new Date(Date.now() - 1000) }),
     );
     const res = await request(app).post(`/api/invites/${validToken}/register`).send(registerBody);
     expect(res.status).toBe(410);
+    expect(res.body.code).toBe('EXPIRED');
   });
 
-  it('revoked token -> 410', async () => {
+  it('revoked token -> 410 REVOKED', async () => {
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
       state.makeInvite({ status: InviteStatus.REVOKED }),
     );
     const res = await request(app).post(`/api/invites/${validToken}/register`).send(registerBody);
     expect(res.status).toBe(410);
+    expect(res.body.code).toBe('REVOKED');
   });
 
-  it('already accepted -> 409', async () => {
+  it('already accepted -> 409 ALREADY_ACCEPTED', async () => {
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
       state.makeInvite({ status: InviteStatus.ACCEPTED }),
     );
     const res = await request(app).post(`/api/invites/${validToken}/register`).send(registerBody);
     expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ALREADY_ACCEPTED');
   });
 
-  it('email already has account -> 409', async () => {
+  it('email already has account -> 409 ACCOUNT_EXISTS', async () => {
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(state.makeInvite());
     state.prisma.user.findUnique.mockResolvedValueOnce({ id: 'existing-user' });
     const res = await request(app).post(`/api/invites/${validToken}/register`).send(registerBody);
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/already exists/i);
+    expect(res.body.code).toBe('ACCOUNT_EXISTS');
   });
 
-  it('missing name -> 400', async () => {
+  it('missing name -> 400 INVALID_INPUT', async () => {
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(state.makeInvite());
     const res = await request(app)
       .post(`/api/invites/${validToken}/register`)
       .send({ password: 'password123' });
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_INPUT');
   });
 
-  it('missing password -> 400', async () => {
+  it('missing password -> 400 INVALID_INPUT', async () => {
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(state.makeInvite());
     const res = await request(app)
       .post(`/api/invites/${validToken}/register`)
       .send({ name: 'New User' });
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_INPUT');
   });
 
   it('valid token + new user -> 201; invite ACCEPTED; sessionCreated: true', async () => {
@@ -435,46 +514,51 @@ describe('POST /api/invites/:token/accept', () => {
     expect(res.status).toBe(401);
   });
 
-  it('unknown token -> 404', async () => {
+  it('unknown token -> 404 NOT_FOUND', async () => {
     state.ctx.user = U;
     const res = await request(app).post(`/api/invites/${validToken}/accept`);
     expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
   });
 
-  it('expired token -> 410', async () => {
+  it('expired token -> 410 EXPIRED', async () => {
     state.ctx.user = U;
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
       state.makeInvite({ expiresAt: new Date(Date.now() - 1000) }),
     );
     const res = await request(app).post(`/api/invites/${validToken}/accept`);
     expect(res.status).toBe(410);
+    expect(res.body.code).toBe('EXPIRED');
   });
 
-  it('revoked token -> 410', async () => {
+  it('revoked token -> 410 REVOKED', async () => {
     state.ctx.user = U;
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
       state.makeInvite({ status: InviteStatus.REVOKED }),
     );
     const res = await request(app).post(`/api/invites/${validToken}/accept`);
     expect(res.status).toBe(410);
+    expect(res.body.code).toBe('REVOKED');
   });
 
-  it('already accepted -> 409', async () => {
+  it('already accepted -> 409 ALREADY_ACCEPTED', async () => {
     state.ctx.user = U;
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
       state.makeInvite({ status: InviteStatus.ACCEPTED }),
     );
     const res = await request(app).post(`/api/invites/${validToken}/accept`);
     expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ALREADY_ACCEPTED');
   });
 
-  it('email mismatch -> 403', async () => {
+  it('email mismatch -> 403 EMAIL_MISMATCH', async () => {
     state.ctx.user = { ...U, email: 'other@test.com' };
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
       state.makeInvite({ email: 'invitee@test.com' }),
     );
     const res = await request(app).post(`/api/invites/${validToken}/accept`);
     expect(res.status).toBe(403);
+    expect(res.body.code).toBe('EMAIL_MISMATCH');
   });
 
   it('valid token + correct email -> 201', async () => {
@@ -488,7 +572,7 @@ describe('POST /api/invites/:token/accept', () => {
     expect(res.body).toMatchObject({ patientId: invite.patientId, role: invite.role });
   });
 
-  it('already a PatientMember -> 409', async () => {
+  it('already a PatientMember -> 409 ALREADY_MEMBER', async () => {
     state.ctx.user = { ...U, email: 'invitee@test.com' };
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
       state.makeInvite({ email: 'invitee@test.com' }),
@@ -497,9 +581,10 @@ describe('POST /api/invites/:token/accept', () => {
     state.prisma.patientMember.findUnique.mockResolvedValueOnce({ id: 'existing-m' } as never);
     const res = await request(app).post(`/api/invites/${validToken}/accept`);
     expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ALREADY_MEMBER');
   });
 
-  it('race: TX updateMany count=0 -> 409', async () => {
+  it('race: TX updateMany count=0 -> 409 STATUS_CHANGED', async () => {
     state.ctx.user = { ...U, email: 'invitee@test.com' };
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
       state.makeInvite({ email: 'invitee@test.com' }),
@@ -507,6 +592,7 @@ describe('POST /api/invites/:token/accept', () => {
     // existingMember = null (default), updateMany = { count: 0 } (default) -> ConflictError -> 409
     const res = await request(app).post(`/api/invites/${validToken}/accept`);
     expect(res.status).toBe(409);
+    expect(res.body.code).toBe('STATUS_CHANGED');
   });
 });
 
@@ -518,38 +604,42 @@ describe('DELETE /api/invites/:id', () => {
     expect(res.status).toBe(401);
   });
 
-  it('non-member with valid invite ID -> 404 (enumeration-safe)', async () => {
+  it('non-member with valid invite ID -> 404 NOT_FOUND (enumeration-safe)', async () => {
     state.ctx.user = U;
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(state.makeInvite());
     // assertPatientMembership: default returns null (ctx.membership=null) -> 404
     const res = await request(app).delete('/api/invites/inv1');
     expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
   });
 
-  it('VIEWER with valid invite ID -> 404 (enumeration-safe)', async () => {
+  it('VIEWER with valid invite ID -> 404 NOT_FOUND (enumeration-safe)', async () => {
     state.ctx.user = U;
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(state.makeInvite());
     state.prisma.patientMember.findUnique.mockResolvedValueOnce(VIEWER_M as never);
     const res = await request(app).delete('/api/invites/inv1');
     expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
   });
 
-  it('EDITOR with valid invite ID -> 404 (enumeration-safe)', async () => {
+  it('EDITOR with valid invite ID -> 404 NOT_FOUND (enumeration-safe)', async () => {
     state.ctx.user = U;
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(state.makeInvite());
     state.prisma.patientMember.findUnique.mockResolvedValueOnce(EDITOR_M as never);
     const res = await request(app).delete('/api/invites/inv1');
     expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
   });
 
-  it('invite not found -> 404', async () => {
+  it('invite not found -> 404 NOT_FOUND', async () => {
     state.ctx.user = U;
     // findUnique default returns null
     const res = await request(app).delete('/api/invites/nonexistent');
     expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
   });
 
-  it('invite already ACCEPTED -> 409', async () => {
+  it('invite already ACCEPTED -> 409 ALREADY_ACCEPTED', async () => {
     state.ctx.user = U;
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(
       state.makeInvite({ status: InviteStatus.ACCEPTED }),
@@ -557,15 +647,17 @@ describe('DELETE /api/invites/:id', () => {
     state.prisma.patientMember.findUnique.mockResolvedValueOnce(OWNER_M as never);
     const res = await request(app).delete('/api/invites/inv1');
     expect(res.status).toBe(409);
+    expect(res.body.code).toBe('ALREADY_ACCEPTED');
   });
 
-  it('race: updateMany count=0 -> 409', async () => {
+  it('race: updateMany count=0 -> 409 STATUS_CHANGED', async () => {
     state.ctx.user = U;
     state.prisma.patientInvite.findUnique.mockResolvedValueOnce(state.makeInvite());
     state.prisma.patientMember.findUnique.mockResolvedValueOnce(OWNER_M as never);
     // updateMany default returns { count: 0 } -> 409
     const res = await request(app).delete('/api/invites/inv1');
     expect(res.status).toBe(409);
+    expect(res.body.code).toBe('STATUS_CHANGED');
   });
 
   it('OWNER, PENDING invite -> 204', async () => {

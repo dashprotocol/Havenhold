@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -20,13 +20,17 @@ type LoginInput = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, isLoading } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
 
+  const raw = searchParams.get('redirect') ?? '';
+  const redirectTo = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/';
+
   // Redirect once the session is confirmed — covers both post-login and already-authenticated visits
   useEffect(() => {
-    if (!isLoading && user) navigate('/', { replace: true });
-  }, [user, isLoading, navigate]);
+    if (!isLoading && user) navigate(redirectTo, { replace: true });
+  }, [user, isLoading, navigate, redirectTo]);
 
   const {
     register,
@@ -40,7 +44,7 @@ export default function LoginPage() {
       email: data.email,
       password: data.password,
       fetchOptions: {
-        onSuccess: () => navigate('/', { replace: true }),
+        onSuccess: () => navigate(redirectTo, { replace: true }),
       },
     });
     if (error) {

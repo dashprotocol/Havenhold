@@ -1,5 +1,12 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
+export class ApiError extends Error {
+  constructor(public status: number, public code: string, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -8,9 +15,26 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (res.status === 401) {
     window.location.href = '/login';
-    throw new Error('Unauthenticated');
+    throw new ApiError(401, 'UNAUTHENTICATED', 'Unauthenticated');
   }
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.code ?? 'UNKNOWN', body.error ?? `API error ${res.status}`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+async function publicFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    ...options,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.code ?? 'UNKNOWN', body.error ?? `API error ${res.status}`);
+  }
   return res.json();
 }
 
@@ -57,9 +81,12 @@ export const uploadDocument = async (
   });
   if (res.status === 401) {
     window.location.href = '/login';
-    throw new Error('Unauthenticated');
+    throw new ApiError(401, 'UNAUTHENTICATED', 'Unauthenticated');
   }
-  if (!res.ok) throw new Error(`Upload failed ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.code ?? 'UNKNOWN', body.error ?? `Upload failed ${res.status}`);
+  }
   return res.json();
 };
 
@@ -83,6 +110,29 @@ export const fetchMe = () => request<MeResponse>('/me');
 // Family
 export const fetchFamily = (patientId: string) =>
   request<FamilyMember[]>(`/family/${patientId}`);
+
+// Invites
+export const fetchPendingInvites = (patientId: string) =>
+  request<PendingInvite[]>(`/invites/${patientId}`);
+
+export const createInvite = (data: CreateInviteInput) =>
+  request<PendingInvite>('/invites', { method: 'POST', body: JSON.stringify(data) });
+
+export const revokeInvite = (id: string) =>
+  request<void>(`/invites/${id}`, { method: 'DELETE' });
+
+export const acceptInvite = (token: string) =>
+  request<{ membershipId: string; patientId: string; role: MemberRole }>(
+    `/invites/${token}/accept`, { method: 'POST' }
+  );
+
+export const previewInvite = (token: string) =>
+  publicFetch<InvitePreview>(`/invites/token/${token}`);
+
+export const registerViaInvite = (token: string, body: { name: string; password: string }) =>
+  publicFetch<{ membershipId: string; patientId: string; role: MemberRole; sessionCreated: boolean }>(
+    `/invites/${token}/register`, { method: 'POST', body: JSON.stringify(body) }
+  );
 
 // SSE helper — returns a cleanup function
 export function subscribeToFeed(
@@ -233,4 +283,26 @@ export interface SSEEvent {
   appointmentsAdded?: number;
   medicationsAdded?: number;
   patientId?: string;
+}
+
+export interface PendingInvite {
+  id: string;
+  email: string;
+  role: MemberRole;
+  createdAt: string;
+  expiresAt: string;
+  invitedBy: { id: string; name: string };
+}
+
+export interface InvitePreview {
+  email: string;
+  role: MemberRole;
+  patientName: string;
+  expiresAt: string;
+}
+
+export interface CreateInviteInput {
+  patientId: string;
+  email: string;
+  role: 'EDITOR' | 'VIEWER';
 }

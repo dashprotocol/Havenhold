@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AppLayout from "./components/AppLayout";
@@ -12,6 +13,7 @@ import DocumentUploadPage from "./pages/DocumentUploadPage";
 import DocumentDetailPage from "./pages/DocumentDetailPage";
 import AddAppointmentPage from "./pages/AddAppointmentPage";
 import FamilyPage from "./pages/FamilyPage";
+import InviteAcceptPage from "./pages/InviteAcceptPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +24,7 @@ const App = () => (
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/invite/:token" element={<InviteAcceptPage />} />
           <Route
             path="/*"
             element={
@@ -43,6 +46,7 @@ const App = () => (
             }
           />
         </Routes>
+        <Toaster />
       </AuthProvider>
     </BrowserRouter>
   </QueryClientProvider>

@@ -24,6 +24,10 @@ function isPrismaConflict(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002';
 }
 
+function sanitizeForLog(value: unknown): string {
+  return String(value).replace(/[\r\n]/g, '');
+}
+
 // Double-cast to bypass better-auth's complex inferred API types while keeping
 // a local contract that matches what the admin plugin actually returns.
 type AdminApi = {
@@ -61,7 +65,7 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
       data: { status: InviteStatus.REVOKED },
     });
     if (swept.count > 0) {
-      console.info(`[invite] auto-revoked ${swept.count} expired invite(s) for patient=${patientId}`);
+      console.info(`[invite] auto-revoked ${swept.count} expired invite(s) for patient=${sanitizeForLog(patientId)}`);
     }
 
     // Check invitee is not already a member

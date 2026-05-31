@@ -1,5 +1,9 @@
 import { Router } from 'express';
+import { AuditAction, AuditResource } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { captureError } from '../lib/errors';
+import { captureEvent } from '../lib/posthog';
+import { createAuditLog, requestMeta } from '../lib/audit';
 import { requirePatientAccess, requireWriteAccess, assertPatientMembership, canWrite } from '../middleware/sessionAuth';
 
 export const medicationsRouter = Router();
@@ -18,6 +22,7 @@ medicationsRouter.get('/:patientId', requirePatientAccess, async (req, res) => {
     });
     res.json(medications);
   } catch (err) {
+    captureError(err, req);
     res.status(500).json({ error: 'Failed to fetch medications' });
   }
 });
@@ -29,8 +34,21 @@ medicationsRouter.post('/', requirePatientAccess, requireWriteAccess, async (req
     const medication = await prisma.medication.create({
       data: { patientId, name, dosage, frequency, prescribingDoctor },
     });
+
+    void createAuditLog(prisma, {
+      userId: req.user!.id,
+      patientId,
+      action: AuditAction.RECORD_CREATED,
+      resource: AuditResource.MEDICATION,
+      resourceId: medication.id,
+      ...requestMeta(req),
+    });
+
+    captureEvent(req.user!.id, 'medication_added', { patientId, source: 'manual' });
+
     res.status(201).json(medication);
   } catch (err) {
+    captureError(err, req);
     res.status(500).json({ error: 'Failed to create medication' });
   }
 });
@@ -56,6 +74,7 @@ medicationsRouter.patch('/:id/review', async (req, res) => {
     });
     res.json(medication);
   } catch (err) {
+    captureError(err, req);
     res.status(500).json({ error: 'Failed to review medication' });
   }
 });
@@ -75,15 +94,16 @@ medicationsRouter.patch('/:id', async (req, res) => {
     const medication = await prisma.medication.update({
       where: { id: req.params.id },
       data: {
-        ...(name !== undefined && { name }),
-        ...(dosage !== undefined && { dosage }),
-        ...(frequency !== undefined && { frequency }),
+        ...(name              !== undefined && { name }),
+        ...(dosage            !== undefined && { dosage }),
+        ...(frequency         !== undefined && { frequency }),
         ...(prescribingDoctor !== undefined && { prescribingDoctor }),
-        ...(active !== undefined && { active }),
+        ...(active            !== undefined && { active }),
       },
     });
     res.json(medication);
   } catch (err) {
+    captureError(err, req);
     res.status(500).json({ error: 'Failed to update medication' });
   }
 });

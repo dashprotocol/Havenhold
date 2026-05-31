@@ -51,6 +51,9 @@ const state = vi.hoisted(() => {
       delete:     vi.fn(async () => makeInvite()),
       count:      vi.fn(async () => 0),
     },
+    auditLog: {
+      create: vi.fn(async () => ({})),
+    },
     user: {
       findUnique: vi.fn(async () => null),
       delete:     vi.fn(async () => ({ id: 'u2' })),
@@ -70,6 +73,12 @@ const state = vi.hoisted(() => {
   return { ctx, prisma, getSession, createUser, signInEmail, makeInvite };
 });
 
+vi.mock('@sentry/node', () => ({
+  captureException: vi.fn(),
+  init: vi.fn(),
+  setupExpressErrorHandler: vi.fn(() => (_req: unknown, _res: unknown, next: () => void) => next()),
+}));
+
 vi.mock('../lib/auth', () => ({
   auth: {
     api: {
@@ -86,7 +95,9 @@ vi.mock('../lib/email', () => ({
   sendInviteEmail: vi.fn(async () => undefined),
 }));
 
+import * as Sentry from '@sentry/node';
 import { sendInviteEmail } from '../lib/email';
+import { requestIdMiddleware } from '../middleware/requestId';
 import { invitesRouter } from './invites';
 
 const U        = { id: 'u1', email: 'owner@test.com', name: 'Owner User' };
@@ -98,6 +109,7 @@ let app: Express;
 
 beforeAll(() => {
   app = express();
+  app.use(requestIdMiddleware);
   app.use(express.json());
   app.use('/api/invites', invitesRouter);
 });
@@ -118,6 +130,7 @@ beforeEach(() => {
   state.prisma.patientInvite.updateMany.mockResolvedValue({ count: 0 });
   state.prisma.patientInvite.delete.mockResolvedValue(state.makeInvite() as never);
   state.prisma.patientInvite.count.mockResolvedValue(0);
+  state.prisma.auditLog.create.mockResolvedValue({} as never);
   state.prisma.patientMember.findUnique.mockImplementation(async () => state.ctx.membership);
   state.prisma.patientMember.findMany.mockResolvedValue([]);
   state.prisma.patientMember.create.mockResolvedValue(
@@ -667,5 +680,72 @@ describe('DELETE /api/invites/:id', () => {
     state.prisma.patientInvite.updateMany.mockResolvedValueOnce({ count: 1 });
     const res = await request(app).delete('/api/invites/inv1');
     expect(res.status).toBe(204);
+  });
+});
+
+// ── Observability ──────────────────────────────────────────────────────────────
+
+describe('requestId middleware', () => {
+  it('every response includes x-request-id matching UUID v4 format', async () => {
+    // Use a 401 (unauthenticated) so no DB setup is needed
+    const res = await request(app).post('/api/invites').send({});
+    const id = res.headers['x-request-id'];
+    expect(id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+  });
+});
+
+describe('audit log', () => {
+  const body = { patientId: 'p1', email: 'invitee@test.com', role: 'VIEWER' };
+
+  it('successful invite create writes INVITE_CREATED audit row', async () => {
+    state.ctx.user = U;
+    state.ctx.membership = OWNER_M;
+    state.prisma.patientInvite.create.mockResolvedValueOnce(state.makeInvite() as never);
+
+    await request(app).post('/api/invites').send(body);
+
+    // Allow the void createAuditLog promise to settle
+    await new Promise(r => setImmediate(r));
+
+    expect(state.prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'INVITE_CREATED',
+          patientId: 'p1',
+          userId: U.id,
+        }),
+      }),
+    );
+  });
+
+  it('audit write failure does not affect primary response', async () => {
+    state.ctx.user = U;
+    state.ctx.membership = OWNER_M;
+    state.prisma.patientInvite.create.mockResolvedValueOnce(state.makeInvite() as never);
+    state.prisma.auditLog.create.mockRejectedValueOnce(new Error('DB error') as never);
+
+    const res = await request(app).post('/api/invites').send(body);
+
+    expect(res.status).toBe(201);
+  });
+});
+
+describe('error capture', () => {
+  it('unexpected DB error in invite create calls Sentry.captureException', async () => {
+    const body = { patientId: 'p1', email: 'invitee@test.com', role: 'VIEWER' };
+    state.ctx.user = U;
+    state.ctx.membership = OWNER_M;
+    // Make the primary DB call throw so captureError is reached
+    state.prisma.patientInvite.create.mockRejectedValueOnce(new Error('DB exploded') as never);
+
+    const res = await request(app).post('/api/invites').send(body);
+
+    expect(res.status).toBe(500);
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'DB exploded' }),
+      expect.any(Object),
+    );
   });
 });

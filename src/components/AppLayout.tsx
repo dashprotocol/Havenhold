@@ -41,7 +41,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </header>
 
       {/* Content */}
-      <main className="flex-1 pb-24 page-enter">
+      <main className="flex-1 pb-24 page-enter ph-no-capture">
         <div className="max-w-2xl mx-auto px-5 py-5">
           {children}
         </div>

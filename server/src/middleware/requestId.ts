@@ -1,0 +1,14 @@
+import { Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'crypto';
+
+declare module 'express-serve-static-core' {
+  interface Request {
+    requestId: string;
+  }
+}
+
+export function requestIdMiddleware(req: Request, res: Response, next: NextFunction): void {
+  req.requestId = randomUUID();
+  res.setHeader('X-Request-Id', req.requestId);
+  next();
+}

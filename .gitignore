@@ -28,6 +28,7 @@ dist
 dist-ssr
 server/dist
 *.local
+*.local.ts
 
 # Editor directories and files
 .vscode/*

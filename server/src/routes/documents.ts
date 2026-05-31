@@ -6,6 +6,10 @@ import { flags } from '../config/flags';
 import { prisma } from '../lib/prisma';
 import { runPipeline } from '../lib/pipeline';
 import { getAnalysisType } from '../lib/validation';
+import { captureError } from '../lib/errors';
+import { captureEvent } from '../lib/posthog';
+import { createAuditLog, requestMeta } from '../lib/audit';
+import { AuditAction, AuditResource } from '@prisma/client';
 import { broadcastFeedEvent } from './feed';
 import { requirePatientAccess, assertPatientMembership, canWrite } from '../middleware/sessionAuth';
 
@@ -94,13 +98,31 @@ documentsRouter.post(
 
       broadcastFeedEvent(patientId, { type: 'feed_refresh', patientId });
 
-      // Fire-and-forget — respond immediately, pipeline runs async
-      runPipeline(document.id, rawText, patientId, safeAnalysisType).catch(console.error);
+      void createAuditLog(prisma, {
+        userId: req.user!.id,
+        patientId,
+        action: AuditAction.DOCUMENT_UPLOADED,
+        resource: AuditResource.DOCUMENT,
+        resourceId: document.id,
+        metadata: { filename: req.file.originalname },
+        ...requestMeta(req),
+      });
+
+      captureEvent(req.user!.id, 'document_uploaded', {
+        patientId,
+        fileType: req.file.mimetype,
+      });
+
+      // Fire-and-forget — respond immediately, pipeline runs async.
+      // userId passed explicitly so pipeline events are attributed to the uploader.
+      runPipeline(document.id, rawText, patientId, safeAnalysisType, req.user!.id).catch(
+        (err) => captureError(err),
+      );
 
       res.status(201).json({ documentId: document.id, status: 'PENDING' });
     } catch (err) {
       cleanup();
-      console.error(err);
+      captureError(err, req);
       res.status(500).json({ error: 'Upload failed' });
     }
   },
@@ -121,6 +143,7 @@ documentsRouter.get('/list/:patientId', requirePatientAccess, async (req, res) =
     });
     res.json(documents);
   } catch (err) {
+    captureError(err, req);
     res.status(500).json({ error: 'Failed to fetch documents' });
   }
 });
@@ -147,8 +170,19 @@ documentsRouter.get('/:id', async (req, res) => {
     if (!document) return res.status(404).json({ error: 'Document not found' });
     const membership = await assertPatientMembership(req.user!.id, document.patientId);
     if (!membership) return res.status(403).json({ error: 'Access denied' });
+
+    void createAuditLog(prisma, {
+      userId: req.user!.id,
+      patientId: document.patientId,
+      action: AuditAction.DOCUMENT_VIEWED,
+      resource: AuditResource.DOCUMENT,
+      resourceId: document.id,
+      ...requestMeta(req),
+    });
+
     res.json(document);
   } catch (err) {
+    captureError(err, req);
     res.status(500).json({ error: 'Failed to fetch document' });
   }
 });

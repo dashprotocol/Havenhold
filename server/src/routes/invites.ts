@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { MemberRole, InviteStatus } from '@prisma/client';
+import { MemberRole, InviteStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { auth } from '../lib/auth';
 import { generateToken, hashToken, INVITE_TTL_MS } from '../lib/token';
@@ -38,6 +38,26 @@ const adminApi = auth.api as unknown as AdminApi;
 
 const INVITE_ROLE_ALLOWLIST: MemberRole[] = [MemberRole.VIEWER, MemberRole.EDITOR];
 const MAX_PENDING_INVITES = 20;
+const MIN_PASSWORD_LENGTH = 8;
+
+async function acceptInviteTx(
+  tx: Prisma.TransactionClient,
+  inviteId: string,
+  userId: string,
+  invite: { patientId: string; role: MemberRole; invitedById: string },
+): Promise<string> {
+  const now = new Date();
+  const updated = await tx.patientInvite.updateMany({
+    where: { id: inviteId, status: InviteStatus.PENDING, expiresAt: { gt: now } },
+    data: { status: InviteStatus.ACCEPTED },
+  });
+  if (updated.count === 0) throw new ConflictError('Invite status changed');
+  const member = await tx.patientMember.create({
+    data: { patientId: invite.patientId, userId, role: invite.role, invitedBy: invite.invitedById },
+    select: { id: true },
+  });
+  return member.id;
+}
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── POST /api/invites — create invite (OWNER only) ────────────────────────────
@@ -256,8 +276,8 @@ invitesRouter.post('/:token/register', async (req, res) => {
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ code: 'INVALID_INPUT', error: 'name is required' });
     }
-    if (!password || typeof password !== 'string' || password.length < 1) {
-      return res.status(400).json({ code: 'INVALID_INPUT', error: 'password is required' });
+    if (!password || typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ code: 'INVALID_INPUT', error: `password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     }
 
     const existing = await prisma.user.findUnique({
@@ -281,23 +301,11 @@ invitesRouter.post('/:token/register', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create account' });
     }
 
+    let membershipId: string;
     try {
-      await prisma.$transaction(async (tx) => {
-        const now = new Date();
-        const updated = await tx.patientInvite.updateMany({
-          where: { id: invite.id, status: InviteStatus.PENDING, expiresAt: { gt: now } },
-          data: { status: InviteStatus.ACCEPTED },
-        });
-        if (updated.count === 0) throw new ConflictError('Invite status changed');
-        await tx.patientMember.create({
-          data: {
-            patientId: invite.patientId,
-            userId: newUser.user.id,
-            role: invite.role,
-            invitedBy: invite.invitedById,
-          },
-        });
-      });
+      membershipId = await prisma.$transaction((tx) =>
+        acceptInviteTx(tx, invite.id, newUser.user.id, invite)
+      );
     } catch (txErr) {
       await prisma.user.delete({ where: { id: newUser.user.id } }).catch(e =>
         console.error('[register] user cleanup failed:', e)
@@ -326,13 +334,8 @@ invitesRouter.post('/:token/register', async (req, res) => {
       sessionCreated = false;
     }
 
-    const member = await prisma.patientMember.findUnique({
-      where: { patientId_userId: { patientId: invite.patientId, userId: newUser.user.id } },
-      select: { id: true },
-    });
-
     return res.status(201).json({
-      membershipId: member?.id,
+      membershipId,
       patientId: invite.patientId,
       role: invite.role,
       sessionCreated,
@@ -375,23 +378,11 @@ invitesRouter.post('/:token/accept', requireAuth, async (req, res) => {
       return res.status(409).json({ code: 'ALREADY_MEMBER', error: 'Already a member' });
     }
 
+    let membershipId: string;
     try {
-      await prisma.$transaction(async (tx) => {
-        const now = new Date();
-        const updated = await tx.patientInvite.updateMany({
-          where: { id: invite.id, status: InviteStatus.PENDING, expiresAt: { gt: now } },
-          data: { status: InviteStatus.ACCEPTED },
-        });
-        if (updated.count === 0) throw new ConflictError('Invite status changed');
-        await tx.patientMember.create({
-          data: {
-            patientId: invite.patientId,
-            userId: req.user!.id,
-            role: invite.role,
-            invitedBy: invite.invitedById,
-          },
-        });
-      });
+      membershipId = await prisma.$transaction((tx) =>
+        acceptInviteTx(tx, invite.id, req.user!.id, invite)
+      );
     } catch (txErr) {
       if (txErr instanceof ConflictError) {
         return res.status(409).json({ code: 'STATUS_CHANGED', error: 'Invite status changed' });
@@ -402,13 +393,8 @@ invitesRouter.post('/:token/accept', requireAuth, async (req, res) => {
       return res.status(500).json({ error: 'Failed to accept invite' });
     }
 
-    const member = await prisma.patientMember.findUnique({
-      where: { patientId_userId: { patientId: invite.patientId, userId: req.user!.id } },
-      select: { id: true },
-    });
-
     return res.status(201).json({
-      membershipId: member?.id,
+      membershipId,
       patientId: invite.patientId,
       role: invite.role,
     });

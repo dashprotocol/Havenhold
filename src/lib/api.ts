@@ -81,9 +81,12 @@ export const uploadDocument = async (
   });
   if (res.status === 401) {
     window.location.href = '/login';
-    throw new Error('Unauthenticated');
+    throw new ApiError(401, 'UNAUTHENTICATED', 'Unauthenticated');
   }
-  if (!res.ok) throw new Error(`Upload failed ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.code ?? 'UNKNOWN', body.error ?? `Upload failed ${res.status}`);
+  }
   return res.json();
 };
 

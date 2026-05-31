@@ -39,3 +39,6 @@ server/dist
 *.njsproj
 *.sln
 *.sw?
+
+*storybook.log
+storybook-static

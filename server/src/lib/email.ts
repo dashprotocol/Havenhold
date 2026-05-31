@@ -1,4 +1,6 @@
+import React from 'react';
 import { Resend } from 'resend';
+import { InviteEmail } from '../emails/InviteEmail';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -19,8 +21,8 @@ export async function sendInviteEmail({
   if (!appUrl) throw new Error('APP_URL env var is not set');
 
   const from = process.env.EMAIL_FROM ?? 'noreply@argonnehq.com';
-  const link = `${appUrl}/invite/${token}`;
-  const expires = expiresAt.toLocaleDateString('en-US', {
+  const acceptUrl = `${appUrl}/invite/${token}`;
+  const expiresFormatted = expiresAt.toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
@@ -30,11 +32,7 @@ export async function sendInviteEmail({
     from,
     to,
     subject: "You've been invited to Havenhold",
-    html: `
-      <p>${inviterName} has invited you to collaborate on Havenhold.</p>
-      <p><a href="${link}">Accept your invitation</a></p>
-      <p>This link expires on ${expires}.</p>
-    `.trim(),
+    react: React.createElement(InviteEmail, { inviterName, acceptUrl, expiresFormatted }),
   });
 
   if (error) throw new Error(`Email delivery failed: ${error.message}`);

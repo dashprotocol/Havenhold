@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useSession } from '@/lib/auth-client';
 import { fetchMe, type MeResponse, type PatientMembership } from '@/lib/api';
 
@@ -16,14 +16,16 @@ interface AuthContextValue {
   memberships: PatientMembership[];
   activePatientId: string | null;
   setActivePatientId: (id: string) => void;
+  refreshMe: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue>({
+export const AuthContext = createContext<AuthContextValue>({
   user: null,
   isLoading: true,
   memberships: [],
   activePatientId: null,
   setActivePatientId: () => {},
+  refreshMe: async () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -34,6 +36,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const userId = session?.user?.id;
 
+  const applyMeData = useCallback((data: MeResponse) => {
+    setMeData(data);
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const validStored = data.memberships.find((m) => m.patient.id === stored);
+    const resolved = validStored
+      ? validStored.patient.id
+      : (data.memberships[0]?.patient.id ?? null);
+    setActivePatientIdState(resolved);
+    if (resolved) localStorage.setItem(STORAGE_KEY, resolved);
+  }, []);
+
   useEffect(() => {
     if (!userId) {
       setMeData(null);
@@ -43,21 +56,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setMeLoading(true);
     fetchMe()
-      .then((data) => {
-        setMeData(data);
-
-        const stored = localStorage.getItem(STORAGE_KEY);
-        const validStored = data.memberships.find((m) => m.patient.id === stored);
-        const resolved = validStored
-          ? validStored.patient.id
-          : (data.memberships[0]?.patient.id ?? null);
-
-        setActivePatientIdState(resolved);
-        if (resolved) localStorage.setItem(STORAGE_KEY, resolved);
-      })
+      .then(applyMeData)
       .catch(() => setMeData(null))
       .finally(() => setMeLoading(false));
-  }, [userId]);
+  }, [userId, applyMeData]);
+
+  const refreshMe = useCallback(async () => {
+    try {
+      const data = await fetchMe();
+      applyMeData(data);
+    } catch {
+      // non-fatal: leave existing state
+    }
+  }, [applyMeData]);
 
   const setActivePatientId = (id: string) => {
     setActivePatientIdState(id);
@@ -76,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         memberships: meData?.memberships ?? [],
         activePatientId,
         setActivePatientId,
+        refreshMe,
       }}
     >
       {children}

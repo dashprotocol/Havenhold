@@ -38,6 +38,7 @@ const adminApi = auth.api as unknown as AdminApi;
 
 const INVITE_ROLE_ALLOWLIST: MemberRole[] = [MemberRole.VIEWER, MemberRole.EDITOR];
 const MAX_PENDING_INVITES = 20;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── POST /api/invites — create invite (OWNER only) ────────────────────────────
 
@@ -50,10 +51,13 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
     };
 
     if (!rawEmail || typeof rawEmail !== 'string' || !rawEmail.trim()) {
-      return res.status(400).json({ error: 'email is required' });
+      return res.status(400).json({ code: 'INVALID_INPUT', error: 'email is required' });
+    }
+    if (!EMAIL_RE.test(rawEmail.trim())) {
+      return res.status(400).json({ code: 'INVALID_INPUT', error: 'email is invalid' });
     }
     if (!role || !INVITE_ROLE_ALLOWLIST.includes(role as MemberRole)) {
-      return res.status(400).json({ error: 'role must be VIEWER or EDITOR' });
+      return res.status(400).json({ code: 'INVALID_INPUT', error: 'role must be VIEWER or EDITOR' });
     }
 
     const normalizedEmail = rawEmail.trim().toLowerCase();
@@ -79,7 +83,7 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
         select: { id: true },
       });
       if (existingMember) {
-        return res.status(409).json({ error: 'Already a member' });
+        return res.status(409).json({ code: 'ALREADY_MEMBER', error: 'Already a member' });
       }
     }
 
@@ -89,7 +93,7 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
       select: { id: true },
     });
     if (activePending) {
-      return res.status(409).json({ error: 'Invite already pending' });
+      return res.status(409).json({ code: 'ALREADY_PENDING', error: 'Invite already pending' });
     }
 
     // Abuse cap
@@ -97,7 +101,7 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
       where: { patientId: patientId!, status: InviteStatus.PENDING, expiresAt: { gt: now } },
     });
     if (pendingCount >= MAX_PENDING_INVITES) {
-      return res.status(409).json({ error: 'Too many pending invites for this patient' });
+      return res.status(409).json({ code: 'TOO_MANY_PENDING', error: 'Too many pending invites for this patient' });
     }
 
     const rawToken = generateToken();
@@ -119,7 +123,7 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
       });
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002') {
-        return res.status(409).json({ error: 'Invite already pending' });
+        return res.status(409).json({ code: 'ALREADY_PENDING', error: 'Invite already pending' });
       }
       return res.status(500).json({ error: 'Failed to create invite' });
     }
@@ -152,12 +156,54 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
   }
 });
 
+// ── GET /api/invites/token/:token — public invite preview (no auth) ───────────
+// Must be registered before /:patientId to avoid param shadowing.
+
+invitesRouter.get('/token/:token', async (req, res) => {
+  try {
+    const token = req.params.token as string;
+    const tokenHash = hashToken(token);
+    const invite = await prisma.patientInvite.findUnique({
+      where: { tokenHash },
+      select: {
+        status: true,
+        expiresAt: true,
+        email: true,
+        role: true,
+        patient: { select: { name: true } },
+      },
+    });
+
+    if (!invite) return res.status(404).json({ code: 'NOT_FOUND', error: 'Invite not found' });
+
+    if (invite.status === InviteStatus.ACCEPTED) {
+      return res.status(409).json({ code: 'ALREADY_ACCEPTED', error: 'Invite already accepted' });
+    }
+    if (invite.status === InviteStatus.REVOKED) {
+      return res.status(410).json({ code: 'REVOKED', error: 'Invite has been revoked' });
+    }
+    if (invite.expiresAt < new Date()) {
+      return res.status(410).json({ code: 'EXPIRED', error: 'Invite has expired' });
+    }
+
+    return res.json({
+      email: invite.email,
+      role: invite.role,
+      patientName: invite.patient.name,
+      expiresAt: invite.expiresAt,
+    });
+  } catch (err) {
+    console.error('[invite] unexpected error in GET /api/invites/token/:token:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── GET /api/invites/:patientId — list pending invites (OWNER only) ───────────
 
 invitesRouter.get('/:patientId', requireAuth, requirePatientAccess, async (req, res) => {
   try {
     if (req.membership!.role !== MemberRole.OWNER) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({ code: 'FORBIDDEN', error: 'Access denied' });
     }
 
     const patientId = req.params.patientId as string;
@@ -194,24 +240,24 @@ invitesRouter.post('/:token/register', async (req, res) => {
     const tokenHash = hashToken(token);
     const invite = await prisma.patientInvite.findUnique({ where: { tokenHash } });
 
-    if (!invite) return res.status(404).json({ error: 'Invite not found' });
+    if (!invite) return res.status(404).json({ code: 'NOT_FOUND', error: 'Invite not found' });
 
     if (invite.status === InviteStatus.ACCEPTED) {
-      return res.status(409).json({ error: 'Invite already accepted' });
+      return res.status(409).json({ code: 'ALREADY_ACCEPTED', error: 'Invite already accepted' });
     }
     if (invite.status === InviteStatus.REVOKED) {
-      return res.status(410).json({ error: 'Invite has been revoked' });
+      return res.status(410).json({ code: 'REVOKED', error: 'Invite has been revoked' });
     }
     if (invite.expiresAt < new Date()) {
-      return res.status(410).json({ error: 'Invite has expired' });
+      return res.status(410).json({ code: 'EXPIRED', error: 'Invite has expired' });
     }
 
     const { name, password } = req.body as { name?: string; password?: string };
     if (!name || typeof name !== 'string' || !name.trim()) {
-      return res.status(400).json({ error: 'name is required' });
+      return res.status(400).json({ code: 'INVALID_INPUT', error: 'name is required' });
     }
     if (!password || typeof password !== 'string' || password.length < 1) {
-      return res.status(400).json({ error: 'password is required' });
+      return res.status(400).json({ code: 'INVALID_INPUT', error: 'password is required' });
     }
 
     const existing = await prisma.user.findUnique({
@@ -220,6 +266,7 @@ invitesRouter.post('/:token/register', async (req, res) => {
     });
     if (existing) {
       return res.status(409).json({
+        code: 'ACCOUNT_EXISTS',
         error: 'Account already exists — sign in and use the accept link',
       });
     }
@@ -256,10 +303,10 @@ invitesRouter.post('/:token/register', async (req, res) => {
         console.error('[register] user cleanup failed:', e)
       );
       if (txErr instanceof ConflictError) {
-        return res.status(409).json({ error: 'Invite status changed' });
+        return res.status(409).json({ code: 'STATUS_CHANGED', error: 'Invite status changed' });
       }
       if (isPrismaConflict(txErr)) {
-        return res.status(409).json({ error: 'Already a member' });
+        return res.status(409).json({ code: 'ALREADY_MEMBER', error: 'Already a member' });
       }
       return res.status(500).json({ error: 'Account setup failed' });
     }
@@ -304,20 +351,20 @@ invitesRouter.post('/:token/accept', requireAuth, async (req, res) => {
     const tokenHash = hashToken(token);
     const invite = await prisma.patientInvite.findUnique({ where: { tokenHash } });
 
-    if (!invite) return res.status(404).json({ error: 'Invite not found' });
+    if (!invite) return res.status(404).json({ code: 'NOT_FOUND', error: 'Invite not found' });
 
     if (invite.status === InviteStatus.ACCEPTED) {
-      return res.status(409).json({ error: 'Invite already accepted' });
+      return res.status(409).json({ code: 'ALREADY_ACCEPTED', error: 'Invite already accepted' });
     }
     if (invite.status === InviteStatus.REVOKED) {
-      return res.status(410).json({ error: 'Invite has been revoked' });
+      return res.status(410).json({ code: 'REVOKED', error: 'Invite has been revoked' });
     }
     if (invite.expiresAt < new Date()) {
-      return res.status(410).json({ error: 'Invite has expired' });
+      return res.status(410).json({ code: 'EXPIRED', error: 'Invite has expired' });
     }
 
     if (req.user!.email.toLowerCase() !== invite.email) {
-      return res.status(403).json({ error: 'This invite is for a different email address' });
+      return res.status(403).json({ code: 'EMAIL_MISMATCH', error: 'This invite is for a different email address' });
     }
 
     const existingMember = await prisma.patientMember.findUnique({
@@ -325,7 +372,7 @@ invitesRouter.post('/:token/accept', requireAuth, async (req, res) => {
       select: { id: true },
     });
     if (existingMember) {
-      return res.status(409).json({ error: 'Already a member' });
+      return res.status(409).json({ code: 'ALREADY_MEMBER', error: 'Already a member' });
     }
 
     try {
@@ -347,10 +394,10 @@ invitesRouter.post('/:token/accept', requireAuth, async (req, res) => {
       });
     } catch (txErr) {
       if (txErr instanceof ConflictError) {
-        return res.status(409).json({ error: 'Invite status changed' });
+        return res.status(409).json({ code: 'STATUS_CHANGED', error: 'Invite status changed' });
       }
       if (isPrismaConflict(txErr)) {
-        return res.status(409).json({ error: 'Already a member' });
+        return res.status(409).json({ code: 'ALREADY_MEMBER', error: 'Already a member' });
       }
       return res.status(500).json({ error: 'Failed to accept invite' });
     }
@@ -378,16 +425,16 @@ invitesRouter.delete('/:id', requireAuth, async (req, res) => {
     const id = req.params.id as string;
     const invite = await prisma.patientInvite.findUnique({ where: { id } });
 
-    if (!invite) return res.status(404).json({ error: 'Not found' });
+    if (!invite) return res.status(404).json({ code: 'NOT_FOUND', error: 'Not found' });
 
     const membership = await assertPatientMembership(req.user!.id, invite.patientId);
     if (!membership || membership.role !== MemberRole.OWNER) {
       // Unified 404 — prevents authenticated non-owners from enumerating valid IDs
-      return res.status(404).json({ error: 'Not found' });
+      return res.status(404).json({ code: 'NOT_FOUND', error: 'Not found' });
     }
 
     if (invite.status === InviteStatus.ACCEPTED) {
-      return res.status(409).json({ error: 'Cannot revoke an accepted invite' });
+      return res.status(409).json({ code: 'ALREADY_ACCEPTED', error: 'Cannot revoke an accepted invite' });
     }
 
     const result = await prisma.patientInvite.updateMany({
@@ -395,7 +442,7 @@ invitesRouter.delete('/:id', requireAuth, async (req, res) => {
       data: { status: InviteStatus.REVOKED },
     });
     if (result.count === 0) {
-      return res.status(409).json({ error: 'Invite status changed' });
+      return res.status(409).json({ code: 'STATUS_CHANGED', error: 'Invite status changed' });
     }
 
     return res.status(204).send();

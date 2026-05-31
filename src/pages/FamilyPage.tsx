@@ -1,27 +1,49 @@
-import { useQuery } from "@tanstack/react-query";
-import { Shield, Eye, User, Clock } from "lucide-react";
-import { fetchFamily, type FamilyMember, type MemberRole } from "@/lib/api";
-import { useAuth } from "@/contexts/AuthContext";
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Shield, Eye, User, UserPlus } from 'lucide-react';
+import { fetchFamily, fetchPendingInvites, type FamilyMember, type MemberRole } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import InviteDialog from '@/components/InviteDialog';
+import PendingInviteRow from '@/components/PendingInviteRow';
 
 const roleLabel: Record<MemberRole, string> = {
-  OWNER: "Owner",
-  EDITOR: "Editor",
-  VIEWER: "Viewer",
+  OWNER: 'Owner',
+  EDITOR: 'Editor',
+  VIEWER: 'Viewer',
 };
 
 export default function FamilyPage() {
-  const { activePatientId } = useAuth();
+  const { activePatientId, memberships } = useAuth();
+  const [inviteOpen, setInviteOpen] = useState(false);
+
+  const isOwner = memberships.find((m) => m.patient.id === activePatientId)?.role === 'OWNER';
+
   const { data: members = [], isLoading } = useQuery({
-    queryKey: ["family", activePatientId],
+    queryKey: ['family', activePatientId],
     queryFn: () => fetchFamily(activePatientId!),
     enabled: !!activePatientId,
   });
 
+  const { data: pendingInvites = [] } = useQuery({
+    queryKey: ['invites', activePatientId],
+    queryFn: () => fetchPendingInvites(activePatientId!),
+    enabled: isOwner && !!activePatientId,
+  });
+
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl">Family</h1>
-        <p className="text-muted-foreground mt-1">Everyone helping care for Mom.</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl">Family</h1>
+          <p className="text-muted-foreground mt-1">Everyone helping care for Mom.</p>
+        </div>
+        {isOwner && (
+          <Button size="sm" onClick={() => setInviteOpen(true)} className="flex items-center gap-1.5">
+            <UserPlus className="w-4 h-4" />
+            Invite
+          </Button>
+        )}
       </div>
 
       {isLoading && (
@@ -41,7 +63,7 @@ export default function FamilyPage() {
       )}
 
       <div className="space-y-3">
-        {members.map((member) => (
+        {members.map((member: FamilyMember) => (
           <div key={member.id} className="havenhold-card flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-primary/15 text-primary flex items-center justify-center text-lg font-bold shrink-0">
               {member.user.name.charAt(0)}
@@ -51,12 +73,12 @@ export default function FamilyPage() {
               <p className="text-sm text-muted-foreground">{member.user.email}</p>
             </div>
             <div className="flex flex-col items-end gap-1">
-              {member.role === "OWNER" ? (
+              {member.role === 'OWNER' ? (
                 <span className="flex items-center gap-1 text-xs text-primary font-semibold">
                   <Shield className="w-3.5 h-3.5" />
                   {roleLabel.OWNER}
                 </span>
-              ) : member.role === "EDITOR" ? (
+              ) : member.role === 'EDITOR' ? (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   <User className="w-3.5 h-3.5" />
                   {roleLabel.EDITOR}
@@ -72,14 +94,26 @@ export default function FamilyPage() {
         ))}
       </div>
 
-      <div className="havenhold-card text-center py-6 text-muted-foreground border-dashed border-2 border-border">
-        <p className="font-semibold text-sm">Invite a family member</p>
-        <p className="text-xs mt-1">Share access with siblings or other caregivers</p>
-        <button className="havenhold-btn-outline text-sm mt-3 mx-auto">
-          <Clock className="w-4 h-4" />
-          Coming soon
-        </button>
-      </div>
+      {isOwner && pendingInvites.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            Pending Invites
+          </h2>
+          <div className="space-y-2">
+            {pendingInvites.map((invite) => (
+              <PendingInviteRow key={invite.id} invite={invite} patientId={activePatientId!} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activePatientId && (
+        <InviteDialog
+          patientId={activePatientId}
+          open={inviteOpen}
+          onOpenChange={setInviteOpen}
+        />
+      )}
     </div>
   );
 }

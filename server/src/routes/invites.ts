@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { MemberRole, InviteStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { auth } from '../lib/auth';
@@ -58,13 +59,7 @@ async function acceptInviteTx(
   });
   return member.id;
 }
-function isValidEmail(email: string): boolean {
-  const at = email.indexOf('@');
-  if (at < 1 || at !== email.lastIndexOf('@')) return false;
-  const domain = email.slice(at + 1);
-  const dot = domain.lastIndexOf('.');
-  return dot >= 1 && dot < domain.length - 1;
-}
+const emailSchema = z.string().email();
 
 // ── POST /api/invites — create invite (OWNER only) ────────────────────────────
 
@@ -79,7 +74,7 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
     if (!rawEmail || typeof rawEmail !== 'string' || !rawEmail.trim()) {
       return res.status(400).json({ code: 'INVALID_INPUT', error: 'email is required' });
     }
-    if (!isValidEmail(rawEmail.trim())) {
+    if (!emailSchema.safeParse(rawEmail.trim()).success) {
       return res.status(400).json({ code: 'INVALID_INPUT', error: 'email is invalid' });
     }
     if (!role || !INVITE_ROLE_ALLOWLIST.includes(role as MemberRole)) {

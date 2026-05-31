@@ -58,7 +58,13 @@ async function acceptInviteTx(
   });
   return member.id;
 }
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function isValidEmail(email: string): boolean {
+  const at = email.indexOf('@');
+  if (at < 1 || at !== email.lastIndexOf('@')) return false;
+  const domain = email.slice(at + 1);
+  const dot = domain.lastIndexOf('.');
+  return dot >= 1 && dot < domain.length - 1;
+}
 
 // ── POST /api/invites — create invite (OWNER only) ────────────────────────────
 
@@ -73,7 +79,7 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
     if (!rawEmail || typeof rawEmail !== 'string' || !rawEmail.trim()) {
       return res.status(400).json({ code: 'INVALID_INPUT', error: 'email is required' });
     }
-    if (!EMAIL_RE.test(rawEmail.trim())) {
+    if (!isValidEmail(rawEmail.trim())) {
       return res.status(400).json({ code: 'INVALID_INPUT', error: 'email is invalid' });
     }
     if (!role || !INVITE_ROLE_ALLOWLIST.includes(role as MemberRole)) {

@@ -25,6 +25,7 @@ model User {
   sessions      Session[]
   accounts      Account[]
   sentInvites   PatientInvite[] @relation("InviteIssuer")
+  auditLogs     AuditLog[]
 }
 
 model Session {
@@ -80,6 +81,7 @@ model Patient {
   documents    Document[]
   interactions MedicationInteraction[]
   invites      PatientInvite[]
+  auditLogs    AuditLog[]
 }
 
 model PatientMember {
@@ -244,4 +246,44 @@ model PatientInvite {
 
   @@index([patientId])
   @@index([patientId, email])
+}
+
+enum AuditAction {
+  INVITE_CREATED
+  INVITE_ACCEPTED
+  INVITE_REVOKED
+  MEMBER_REMOVED
+  RECORD_CREATED
+  RECORD_UPDATED
+  RECORD_DELETED
+  RECORD_EXPORTED
+  DOCUMENT_UPLOADED
+  DOCUMENT_VIEWED
+}
+
+enum AuditResource {
+  APPOINTMENT
+  MEDICATION
+  DOCUMENT
+  COMMENT
+  INVITE
+  MEMBER
+}
+
+model AuditLog {
+  id         String         @id @default(cuid())
+  userId     String?
+  user       User?          @relation(fields: [userId], references: [id])
+  patientId  String?
+  patient    Patient?       @relation(fields: [patientId], references: [id])
+  action     AuditAction
+  resource   AuditResource?
+  resourceId String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime       @default(now())
+
+  @@index([userId])
+  @@index([patientId, createdAt])
 }

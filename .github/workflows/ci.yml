@@ -150,8 +150,15 @@ jobs:
               "RESEND_API_KEY",
               "APP_URL",
               "EMAIL_FROM",
+              "SENTRY_DSN",
+              "POSTHOG_API_KEY",
           ]
-          required_frontend = ["VITE_AUTH_BASE_URL", "VITE_API_BASE_URL"]
+          required_frontend = [
+              "VITE_AUTH_BASE_URL",
+              "VITE_API_BASE_URL",
+              "VITE_SENTRY_DSN",
+              "VITE_POSTHOG_KEY",
+          ]
 
           def parse_env(path: str) -> dict[str, str]:
               values: dict[str, str] = {}

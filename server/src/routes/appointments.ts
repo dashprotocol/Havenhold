@@ -1,5 +1,9 @@
 import { Router } from 'express';
+import { AuditAction, AuditResource } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { captureError } from '../lib/errors';
+import { captureEvent } from '../lib/posthog';
+import { createAuditLog, requestMeta } from '../lib/audit';
 import { requirePatientAccess, requireWriteAccess, assertPatientMembership, canWrite } from '../middleware/sessionAuth';
 
 export const appointmentsRouter = Router();
@@ -19,6 +23,7 @@ appointmentsRouter.get('/:patientId', requirePatientAccess, async (req, res) => 
     });
     res.json(appointments);
   } catch (err) {
+    captureError(err, req);
     res.status(500).json({ error: 'Failed to fetch appointments' });
   }
 });
@@ -30,8 +35,21 @@ appointmentsRouter.post('/', requirePatientAccess, requireWriteAccess, async (re
     const appointment = await prisma.appointment.create({
       data: { patientId, title, doctor, specialty, datetime: new Date(datetime), location, notes },
     });
+
+    void createAuditLog(prisma, {
+      userId: req.user!.id,
+      patientId,
+      action: AuditAction.RECORD_CREATED,
+      resource: AuditResource.APPOINTMENT,
+      resourceId: appointment.id,
+      ...requestMeta(req),
+    });
+
+    captureEvent(req.user!.id, 'appointment_added', { patientId, source: 'manual' });
+
     res.status(201).json(appointment);
   } catch (err) {
+    captureError(err, req);
     res.status(500).json({ error: 'Failed to create appointment' });
   }
 });
@@ -51,16 +69,17 @@ appointmentsRouter.patch('/:id', async (req, res) => {
     const appointment = await prisma.appointment.update({
       where: { id: req.params.id },
       data: {
-        ...(title !== undefined && { title }),
-        ...(doctor !== undefined && { doctor }),
+        ...(title     !== undefined && { title }),
+        ...(doctor    !== undefined && { doctor }),
         ...(specialty !== undefined && { specialty }),
-        ...(datetime !== undefined && { datetime: new Date(datetime) }),
-        ...(location !== undefined && { location }),
-        ...(notes !== undefined && { notes }),
+        ...(datetime  !== undefined && { datetime: new Date(datetime) }),
+        ...(location  !== undefined && { location }),
+        ...(notes     !== undefined && { notes }),
       },
     });
     res.json(appointment);
   } catch (err) {
+    captureError(err, req);
     res.status(500).json({ error: 'Failed to update appointment' });
   }
 });
@@ -86,6 +105,7 @@ appointmentsRouter.patch('/:id/review', async (req, res) => {
     });
     res.json(appointment);
   } catch (err) {
+    captureError(err, req);
     res.status(500).json({ error: 'Failed to review appointment' });
   }
 });
@@ -118,18 +138,26 @@ appointmentsRouter.get('/:id/ical', async (req, res) => {
       `DTSTART:${fmt(start)}`,
       `DTEND:${fmt(end)}`,
       `SUMMARY:${escapeIcal(appt.title)}`,
-      appt.location ? `LOCATION:${escapeIcal(appt.location)}` : '',
-      appt.notes ? `DESCRIPTION:${escapeIcal(appt.notes)}` : '',
+      appt.location ? `LOCATION:${escapeIcal(appt.location)}`  : '',
+      appt.notes    ? `DESCRIPTION:${escapeIcal(appt.notes)}` : '',
       'END:VEVENT',
       'END:VCALENDAR',
-    ]
-      .filter(Boolean)
-      .join('\r\n');
+    ].filter(Boolean).join('\r\n');
 
-    res.setHeader('Content-Type', 'text/calendar');
+    void createAuditLog(prisma, {
+      userId: req.user!.id,
+      patientId: appt.patientId,
+      action: AuditAction.RECORD_EXPORTED,
+      resource: AuditResource.APPOINTMENT,
+      resourceId: appt.id,
+      ...requestMeta(req),
+    });
+
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.ics"`);
     res.send(ical);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to generate iCal' });
+    captureError(err, req);
+    res.status(500).json({ error: 'Failed to export appointment' });
   }
 });

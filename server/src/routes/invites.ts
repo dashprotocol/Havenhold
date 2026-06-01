@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { MemberRole, InviteStatus, Prisma } from '@prisma/client';
+import { MemberRole, InviteStatus, Prisma, AuditAction, AuditResource } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { auth } from '../lib/auth';
 import { generateToken, hashToken, INVITE_TTL_MS } from '../lib/token';
 import { sendInviteEmail } from '../lib/email';
+import { captureError } from '../lib/errors';
+import { captureEvent } from '../lib/posthog';
+import { createAuditLog, requestMeta } from '../lib/audit';
+import { logger } from '../lib/logger';
 import {
   requireAuth,
   requirePatientAccess,
@@ -90,7 +94,10 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
       data: { status: InviteStatus.REVOKED },
     });
     if (swept.count > 0) {
-      console.info(`[invite] auto-revoked ${swept.count} expired invite(s) for patient=${sanitizeForLog(patientId)}`);
+      logger.info(
+        { patientId: sanitizeForLog(patientId), count: swept.count },
+        'Auto-revoked expired invites',
+      );
     }
 
     // Check invitee is not already a member
@@ -146,6 +153,7 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
       if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002') {
         return res.status(409).json({ code: 'ALREADY_PENDING', error: 'Invite already pending' });
       }
+      captureError(err, req);
       return res.status(500).json({ error: 'Failed to create invite' });
     }
 
@@ -157,22 +165,34 @@ invitesRouter.post('/', requireAuth, requirePatientAccess, requireOwnerAccess, a
         expiresAt,
       });
     } catch (emailErr) {
-      console.error('[invite] email delivery failed, cleaning up invite row:', emailErr);
+      captureError(emailErr, req);
       try {
         await prisma.patientInvite.delete({ where: { id: invite.id } });
       } catch (deleteErr) {
-        console.error('[invite] cleanup delete failed, falling back to REVOKED:', deleteErr);
+        captureError(deleteErr, req);
         await prisma.patientInvite.update({
           where: { id: invite.id },
           data: { status: InviteStatus.REVOKED },
-        }).catch(e => console.error('[invite] fallback revoke also failed:', e));
+        }).catch(e => captureError(e, req));
       }
       return res.status(500).json({ error: 'Failed to send invite email' });
     }
 
+    void createAuditLog(prisma, {
+      userId: req.user!.id,
+      patientId: invite.patientId,
+      action: AuditAction.INVITE_CREATED,
+      resource: AuditResource.INVITE,
+      resourceId: invite.id,
+      metadata: { role: invite.role },
+      ...requestMeta(req),
+    });
+
+    captureEvent(req.user!.id, 'invite_sent', { patientId: invite.patientId, role: invite.role });
+
     return res.status(201).json(invite);
   } catch (err) {
-    console.error('[invite] unexpected error in POST /api/invites:', err);
+    captureError(err, req);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -214,7 +234,7 @@ invitesRouter.get('/token/:token', async (req, res) => {
       expiresAt: invite.expiresAt,
     });
   } catch (err) {
-    console.error('[invite] unexpected error in GET /api/invites/token/:token:', err);
+    captureError(err, req);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -248,7 +268,7 @@ invitesRouter.get('/:patientId', requireAuth, requirePatientAccess, async (req, 
 
     return res.json(invites);
   } catch (err) {
-    console.error('[invite] unexpected error in GET /api/invites/:patientId:', err);
+    captureError(err, req);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -298,7 +318,7 @@ invitesRouter.post('/:token/register', async (req, res) => {
         body: { email: invite.email, name: name.trim(), password, role: 'user' },
       });
     } catch (err) {
-      console.error('[register] createUser failed:', err);
+      captureError(err, req);
       return res.status(500).json({ error: 'Failed to create account' });
     }
 
@@ -309,7 +329,7 @@ invitesRouter.post('/:token/register', async (req, res) => {
       );
     } catch (txErr) {
       await prisma.user.delete({ where: { id: newUser.user.id } }).catch(e =>
-        console.error('[register] user cleanup failed:', e)
+        captureError(e, req)
       );
       if (txErr instanceof ConflictError) {
         return res.status(409).json({ code: 'STATUS_CHANGED', error: 'Invite status changed' });
@@ -317,6 +337,7 @@ invitesRouter.post('/:token/register', async (req, res) => {
       if (isPrismaConflict(txErr)) {
         return res.status(409).json({ code: 'ALREADY_MEMBER', error: 'Already a member' });
       }
+      captureError(txErr, req);
       return res.status(500).json({ error: 'Account setup failed' });
     }
 
@@ -335,6 +356,15 @@ invitesRouter.post('/:token/register', async (req, res) => {
       sessionCreated = false;
     }
 
+    void createAuditLog(prisma, {
+      userId: newUser.user.id,
+      patientId: invite.patientId,
+      action: AuditAction.INVITE_ACCEPTED,
+      resource: AuditResource.INVITE,
+      resourceId: invite.id,
+      ...requestMeta(req),
+    });
+
     return res.status(201).json({
       membershipId,
       patientId: invite.patientId,
@@ -342,7 +372,7 @@ invitesRouter.post('/:token/register', async (req, res) => {
       sessionCreated,
     });
   } catch (err) {
-    console.error('[register] unexpected error in POST /api/invites/:token/register:', err);
+    captureError(err, req);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -391,8 +421,18 @@ invitesRouter.post('/:token/accept', requireAuth, async (req, res) => {
       if (isPrismaConflict(txErr)) {
         return res.status(409).json({ code: 'ALREADY_MEMBER', error: 'Already a member' });
       }
+      captureError(txErr, req);
       return res.status(500).json({ error: 'Failed to accept invite' });
     }
+
+    void createAuditLog(prisma, {
+      userId: req.user!.id,
+      patientId: invite.patientId,
+      action: AuditAction.INVITE_ACCEPTED,
+      resource: AuditResource.INVITE,
+      resourceId: invite.id,
+      ...requestMeta(req),
+    });
 
     return res.status(201).json({
       membershipId,
@@ -400,7 +440,7 @@ invitesRouter.post('/:token/accept', requireAuth, async (req, res) => {
       role: invite.role,
     });
   } catch (err) {
-    console.error('[accept] unexpected error in POST /api/invites/:token/accept:', err);
+    captureError(err, req);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -432,9 +472,18 @@ invitesRouter.delete('/:id', requireAuth, async (req, res) => {
       return res.status(409).json({ code: 'STATUS_CHANGED', error: 'Invite status changed' });
     }
 
+    void createAuditLog(prisma, {
+      userId: req.user!.id,
+      patientId: invite.patientId,
+      action: AuditAction.INVITE_REVOKED,
+      resource: AuditResource.INVITE,
+      resourceId: invite.id,
+      ...requestMeta(req),
+    });
+
     return res.status(204).send();
   } catch (err) {
-    console.error('[invite] unexpected error in DELETE /api/invites/:id:', err);
+    captureError(err, req);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

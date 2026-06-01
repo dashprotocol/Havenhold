@@ -1,6 +1,9 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { Anthropic as PostHogAnthropic } from '@posthog/ai';
+import type Anthropic from '@anthropic-ai/sdk';
 import type { AnalysisType, ProcessingStatus } from '@prisma/client';
 import { prisma } from './prisma';
+import { posthog, captureEvent } from './posthog';
+import { captureError } from './errors';
 import { deidentify } from './deidentify';
 import {
   sanitizeQuestions,
@@ -9,7 +12,19 @@ import {
 } from './validation';
 import { broadcastFeedEvent } from '../routes/feed';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new PostHogAnthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+  posthog,
+});
+
+// PostHogAnthropic's overloads return Stream|Message when posthogDistinctId is present,
+// because there's no non-streaming+MonitoringParams overload. All our calls are non-streaming;
+// this wrapper preserves that contract at the type level without touching every call site.
+async function createMessage(
+  params: Anthropic.Messages.MessageCreateParamsNonStreaming & { posthogDistinctId?: string },
+): Promise<Anthropic.Messages.Message> {
+  return anthropic.messages.create(params) as Promise<Anthropic.Messages.Message>;
+}
 
 // Use Haiku for cost efficiency during development.
 // Switch to claude-sonnet-4-6 for higher quality output.
@@ -62,6 +77,7 @@ export async function runPipeline(
   rawText: string,
   patientId: string,
   analysisType: AnalysisType = 'BALANCED',
+  userId: string,
 ) {
   try {
     const cleanText = deidentify(rawText);
@@ -70,9 +86,10 @@ export async function runPipeline(
     await setStatus(documentId, 'EXTRACTING');
     broadcastFeedEvent(patientId, { type: 'pipeline', documentId, step: 'EXTRACTING' });
 
-    const extractionResponse = await anthropic.messages.create({
+    const extractionResponse = await createMessage({
       model: MODEL,
       max_tokens: 1024,
+      posthogDistinctId: documentId,
       messages: [
         {
           role: 'user',
@@ -173,9 +190,10 @@ ${cleanText}`,
     // Step 2 uses the analysis lens — same data, different communication style.
     // Haiku is sufficient here; the lens guides tone, not factual reasoning.
     const lens = ANALYSIS_LENS[analysisType] ?? ANALYSIS_LENS.BALANCED;
-    const simplifyResponse = await anthropic.messages.create({
+    const simplifyResponse = await createMessage({
       model: MODEL,
       max_tokens: 1024,
+      posthogDistinctId: documentId,
       messages: [
         {
           role: 'user',
@@ -218,9 +236,10 @@ Instructions: ${extracted.instructions ?? 'none'}`,
         // accuracy matters more than cost. Haiku is too conservative and misses
         // real interactions.
         // All other pipeline steps use the cheaper Haiku model.
-        const interactionResponse = await anthropic.messages.create({
+        const interactionResponse = await createMessage({
           model: 'claude-sonnet-4-5',
           max_tokens: 1024,
+          posthogDistinctId: documentId,
           messages: [
             {
               role: 'user',
@@ -295,9 +314,10 @@ If no interactions, return an empty array [].`,
       // Enrich new medications with plain-language descriptions
       await Promise.all(
         createdMedications.map(async (med) => {
-          const descResponse = await anthropic.messages.create({
+          const descResponse = await createMessage({
             model: MODEL,
             max_tokens: 512,
+            posthogDistinctId: documentId,
             messages: [
               {
                 role: 'user',
@@ -326,9 +346,10 @@ Be warm and clear, not clinical.`,
     await setStatus(documentId, 'GENERATING_QUESTIONS');
     broadcastFeedEvent(patientId, { type: 'pipeline', documentId, step: 'GENERATING_QUESTIONS' });
 
-    const questionsResponse = await anthropic.messages.create({
+    const questionsResponse = await createMessage({
       model: MODEL,
       max_tokens: 512,
+      posthogDistinctId: documentId,
       messages: [
         {
           role: 'user',
@@ -371,23 +392,17 @@ Return ONLY a JSON array of strings: ["question 1", "question 2", ...]`,
       medicationsAdded: createdMedications.length,
     });
 
-    // Broadcast new feed items to all family members
     broadcastFeedEvent(patientId, { type: 'feed_refresh', patientId });
 
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    const apiError = typeof err === 'object' && err !== null
-      ? (err as { status?: unknown; error?: unknown })
-      : undefined;
+    captureEvent(userId, 'document_processed', { patientId, documentId, success: true });
 
-    console.error('Pipeline failed:', message);
-    if (apiError && 'status' in apiError) {
-      console.error('API status:', apiError.status, apiError.error);
-    }
+  } catch (err: unknown) {
+    captureError(err);
     await prisma.document.update({
       where: { id: documentId },
       data: { processingStatus: 'FAILED' },
     });
     broadcastFeedEvent(patientId, { type: 'pipeline', documentId, step: 'FAILED' });
+    captureEvent(userId, 'document_processed', { patientId, documentId, success: false });
   }
 }
